@@ -13,3 +13,40 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Archivos de compilación y temporales
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+build/
+app/build/
+
+# Configuración local y variables de entorno (¡CRÍTICO!)
+local.properties
+
+# Archivos de configuración del IDE (Android Studio / IntelliJ)
+.idea/
+.gradle/
+*.iml
+*.iws
+*.ipr
+
+# Archivos de sistema operativo
+.DS_Store
+Thumbs.db
+ehthumbs.db
+$RECYCLE.BIN/
+
+# Archivos de firmas y Keystores (Seguridad)
+*.jks
+*.keystore
+*.pk8
+*.x509.pem
+
+# Caché de NDK o C++ (si llegan a usar librerías nativas)
+.cxx/
