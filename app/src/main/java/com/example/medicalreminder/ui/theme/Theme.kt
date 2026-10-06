@@ -1,58 +1,38 @@
 package com.example.medicalreminder.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Color
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
+object MRColors {
+    val Navy = Color(0xFF0B1B3F)
+    val Mint = Color(0xFF9AEFD3)
+    val MintStrong = Color(0xFF8FEBCB)
+    val MintSoft = Color(0xFFE3FBF2)
+    val DarkTeal = Color(0xFF0B3B3F)
+    val Background = Color(0xFFFCF9FF)
+    val FieldBg = Color(0xFFF0F2F6)
+    val FieldBorder = Color(0xFF9AA5B8)
+    val TextGray = Color(0xFF5F6673)
+    val StrengthOn = Color(0xFF6FAF4F)
+    val StrengthOff = Color(0xFFE0E3E8)
+    val Error = Color(0xFFB3261E)
+    val Orange = Color(0xFFFF9B71)
+    val ChipGray = Color(0xFFE9ECF1)
+}
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+private val Scheme = lightColorScheme(
+    primary = MRColors.Mint,
+    onPrimary = MRColors.DarkTeal,
+    background = MRColors.Background,
+    surface = MRColors.Background,
+    onBackground = MRColors.Navy,
+    onSurface = MRColors.Navy,
+    error = MRColors.Error
 )
 
 @Composable
-fun MedicalReminderTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+fun MedicalReminderTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = Scheme, content = content)
 }
