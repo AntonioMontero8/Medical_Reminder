@@ -71,4 +71,33 @@ object ApiClient {
             conn.disconnect()
         }
     }
+
+    /** Autentica al usuario contra el servidor (/api/login) */
+    suspend fun login(email: String, contrasena: String): Int = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("correo", email)
+            put("contrasena", contrasena)
+        }
+        val conn = (URL("$BASE_URL/api/login").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 8000
+            readTimeout = 8000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+        try {
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrNull()
+            if (code in 200..299) {
+                json?.optInt("id_usuario", -1) ?: -1
+            } else {
+                throw ApiException(code, json?.optString("error").takeUnless { it.isNullOrBlank() } ?: "Error del servidor ($code)")
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
 }

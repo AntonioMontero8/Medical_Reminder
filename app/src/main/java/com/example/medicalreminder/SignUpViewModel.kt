@@ -12,6 +12,8 @@ import com.example.medicalreminder.network.ApiClient
 import com.example.medicalreminder.network.ApiException
 import kotlinx.coroutines.launch
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Guarda los datos del paso 1 y envía el registro completo al servidor al terminar el paso 2. */
 class SignUpViewModel : ViewModel() {
@@ -46,4 +48,24 @@ class SignUpViewModel : ViewModel() {
             }
         }
     }
+
+    fun login(email: String, pass: String, onSuccess: () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            loading = true
+            error = null
+
+            // Llamada a la API
+            val result = ApiClient.login(email, pass)
+
+            withContext(Dispatchers.Main) {
+                loading = false
+                if (result.isSuccess) {
+                    onSuccess()
+                } else {
+                    error = result.exceptionOrNull()?.message ?: "Error al iniciar sesión"
+                }
+            }
+        }
+    }
 }
+

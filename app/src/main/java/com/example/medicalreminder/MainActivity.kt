@@ -115,5 +115,27 @@ fun AppNavigation(signUpVm: SignUpViewModel) {
         ) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Pantalla principal (próximamente)") }
         }
+        composable(Routes.LOGIN) {
+            val context = LocalContext.current
+            LaunchedEffect(signUpVm.error) {
+                signUpVm.error?.let {
+                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                    signUpVm.error = null
+                }
+            }
+
+            LoginScreen(
+                loading = signUpVm.loading,
+                onLogin = { email, password ->
+                    signUpVm.login(email, password) {
+                        nav.navigate(Routes.HOME) {
+                            popUpTo(Routes.LOGIN) { inclusive = true }
+                        }
+                    }
+                },
+                onForgotPassword = { /* TODO */ },
+                onGoToRegister = { nav.navigate(Routes.REGISTER) }
+            )
+        }
     }
 }
