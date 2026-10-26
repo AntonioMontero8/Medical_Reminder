@@ -1,22 +1,24 @@
 package com.example.medicalreminder
 
+import android.app.Application
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.medicalreminder.data.CaregiverProfile
 import com.example.medicalreminder.data.PatientProfile
 import com.example.medicalreminder.data.PendingRegistration
+import com.example.medicalreminder.data.SessionManager
 import com.example.medicalreminder.network.ApiClient
 import com.example.medicalreminder.network.ApiException
 import kotlinx.coroutines.launch
 import java.io.IOException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /** Guarda los datos del paso 1 y envía el registro completo al servidor al terminar el paso 2. */
-class SignUpViewModel : ViewModel() {
+class SignUpViewModel(app: Application) : AndroidViewModel(app) {
+    private val session = SessionManager.get(app)
+
     var pending by mutableStateOf<PendingRegistration?>(null)
     var loading by mutableStateOf(false)
         private set
@@ -34,7 +36,9 @@ class SignUpViewModel : ViewModel() {
         loading = true
         viewModelScope.launch {
             try {
-                ApiClient.register(body(p))
+                val result = ApiClient.register(body(p))
+                // Al crear la cuenta se inicia sesión automáticamente
+                session.save(result.token, result.user)
                 onSuccess()
                 pending = null
             } catch (e: ApiException) {
@@ -48,24 +52,4 @@ class SignUpViewModel : ViewModel() {
             }
         }
     }
-
-    fun login(email: String, pass: String, onSuccess: () -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) {
-            loading = true
-            error = null
-
-            // Llamada a la API
-            val result = ApiClient.login(email, pass)
-
-            withContext(Dispatchers.Main) {
-                loading = false
-                if (result.isSuccess) {
-                    onSuccess()
-                } else {
-                    error = result.exceptionOrNull()?.message ?: "Error al iniciar sesión"
-                }
-            }
-        }
-    }
 }
-
