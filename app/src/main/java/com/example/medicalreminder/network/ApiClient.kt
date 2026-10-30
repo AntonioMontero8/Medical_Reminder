@@ -168,6 +168,38 @@ object ApiClient {
         )
     }
 
+    /** Envía la solicitud de recuperación de contraseña al servidor (/api/forgot-password) */
+    suspend fun recoverPassword(email: String): Boolean = withContext(Dispatchers.IO) {
+        val body = JSONObject().apply {
+            put("correo", email)
+        }
+        val conn = (URL("$BASE_URL/api/forgot-password").openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = 8000
+            readTimeout = 8000
+            doOutput = true
+            setRequestProperty("Content-Type", "application/json; charset=utf-8")
+        }
+        try {
+            conn.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+            val text = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            val json = runCatching { JSONObject(text) }.getOrNull()
+
+            if (code in 200..299) {
+                true
+            } else {
+                throw ApiException(
+                    code,
+                    json?.optString("error").takeUnless { it.isNullOrBlank() } ?: "Error del servidor ($code)"
+                )
+            }
+        } finally {
+            conn.disconnect()
+        }
+    }
+
     // org.json devuelve el texto "null" con optString cuando el valor es null: por eso este ayudante
     private fun JSONObject.str(name: String): String? =
         if (isNull(name)) null else optString(name).takeIf { it.isNotBlank() }

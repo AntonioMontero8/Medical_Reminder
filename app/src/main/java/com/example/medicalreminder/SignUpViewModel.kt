@@ -24,6 +24,28 @@ class SignUpViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var error by mutableStateOf<String?>(null)
 
+    var successMessage by mutableStateOf<String?>(null)
+
+    fun recoverPassword(email: String, onSuccess: () -> Unit) {
+        if (loading) return
+        loading = true
+        viewModelScope.launch {
+            try {
+                ApiClient.recoverPassword(email)
+                successMessage = "Se han enviado las instrucciones a tu correo."
+                onSuccess()
+            } catch (e: ApiException) {
+                error = e.message
+            } catch (e: java.io.IOException) {
+                error = "No se pudo conectar con el servidor. Verifica que esté encendido."
+            } catch (e: Exception) {
+                error = "Ocurrió un error inesperado"
+            } finally {
+                loading = false
+            }
+        }
+    }
+
     fun submitPatient(profile: PatientProfile, onSuccess: () -> Unit) =
         submit(onSuccess) { ApiClient.patientBody(it, profile) }
 

@@ -34,13 +34,16 @@ import com.example.medicalreminder.ui.link.PatientQrScreen
 import com.example.medicalreminder.ui.profile.ProfileSetupScreen
 import com.example.medicalreminder.ui.theme.MRColors
 import com.example.medicalreminder.ui.theme.MedicalReminderTheme
+import com.example.medicalreminder.ui.auth.ForgotPasswordScreen
 import kotlinx.coroutines.delay
+
 
 object Routes {
     const val LOGIN = "login"
     const val REGISTER = "register"
     const val PROFILE = "profile"
     const val HOME = "home"
+    const val FORGOT_PASSWORD = "forgot_password"
 
     // Paciente
     const val CAREGIVERS = "caregivers"
@@ -120,7 +123,7 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
                         nav.navigate(Routes.HOME) { popUpTo(Routes.LOGIN) { inclusive = true } }
                     }
                 },
-                onForgotPassword = { /* TODO */ },
+                onForgotPassword = { nav.navigate(Routes.FORGOT_PASSWORD) },
                 onGoToRegister = { nav.navigate(Routes.REGISTER) }
             )
         }
@@ -261,6 +264,37 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
                 vm = linkVm, id = id,
                 onBack = { nav.popBackStack() },
                 onUnlinked = { nav.popBackStack() }
+            )
+        }
+
+
+        composable(Routes.FORGOT_PASSWORD) {
+            val context = LocalContext.current
+
+            // Escucha errores
+            LaunchedEffect(signUpVm.error) {
+                signUpVm.error?.let {
+                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                    signUpVm.error = null
+                }
+            }
+
+            // Escucha mensaje de éxito
+            LaunchedEffect(signUpVm.successMessage) {
+                signUpVm.successMessage?.let {
+                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                    signUpVm.successMessage = null
+                }
+            }
+
+            ForgotPasswordScreen(
+                loading = signUpVm.loading,
+                onSendResetLink = { email ->
+                    signUpVm.recoverPassword(email) {
+                        nav.popBackStack() // Regresa a la pantalla de Login tras enviar el correo
+                    }
+                },
+                onBack = { nav.popBackStack() }
             )
         }
     }
