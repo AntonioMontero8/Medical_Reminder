@@ -31,3 +31,11 @@ data class PatientProfile(
 data class CaregiverProfile(
     val expProfesional: String
 )
+
+/** Perfil completo del usuario con sesión (nombre + datos de su rol) para la pantalla de edición. */
+data class ProfileData(
+    val nombre: String,
+    val apellido: String,
+    val patient: PatientProfile? = null,
+    val caregiver: CaregiverProfile? = null
+)
