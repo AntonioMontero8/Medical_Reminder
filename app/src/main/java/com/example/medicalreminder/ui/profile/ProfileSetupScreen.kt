@@ -54,6 +54,42 @@ fun ProfileSetupScreen(
     }
 }
 
+/** Editar perfil desde la pantalla principal: mismo formulario del registro, con los datos actuales ya escritos. */
+@Composable
+fun EditProfileScreen(
+    role: UserRole,
+    firstName: String,
+    lastName: String,
+    patient: PatientProfile?,
+    caregiver: CaregiverProfile?,
+    onBack: () -> Unit,
+    onSavePatient: (String, String, PatientProfile) -> Unit,
+    onSaveCaregiver: (String, String, CaregiverProfile) -> Unit,
+    loading: Boolean = false
+) {
+    when (role) {
+        UserRole.PATIENT -> PatientProfileForm(
+            onBack, onSave = {}, loading = loading,
+            initial = patient, editNames = firstName to lastName, onSaveEdit = onSavePatient
+        )
+        UserRole.CAREGIVER -> CaregiverProfileForm(
+            onBack, onSave = {}, loading = loading,
+            initial = caregiver, editNames = firstName to lastName, onSaveEdit = onSaveCaregiver
+        )
+    }
+}
+
+/** Nombre(s) y apellidos: solo aparecen al editar (en el registro ya se pidieron en el paso 1). */
+@Composable
+private fun NameFields(
+    first: String, last: String,
+    onFirst: (String) -> Unit, onLast: (String) -> Unit,
+    firstError: String?
+) {
+    ProfileTextField(first, { onFirst(it.take(50)) }, "Nombre(s)", Modifier.fillMaxWidth(), error = firstError)
+    ProfileTextField(last, { onLast(it.take(50)) }, "Apellidos", Modifier.fillMaxWidth())
+}
+
 /* ------------------------------ PACIENTE ------------------------------ */
 
 private data class PatientErrors(
@@ -64,19 +100,30 @@ private data class PatientErrors(
 }
 
 @Composable
-private fun PatientProfileForm(onBack: () -> Unit, onSave: (PatientProfile) -> Unit, loading: Boolean) {
-    var age by rememberSaveable { mutableStateOf("") }
-    var sex by rememberSaveable { mutableStateOf("") }
-    var weight by rememberSaveable { mutableStateOf("") }
-    var height by rememberSaveable { mutableStateOf("") }
-    var blood by rememberSaveable { mutableStateOf("") }
-    var allergies by rememberSaveable { mutableStateOf("") }
-    var conditions by rememberSaveable { mutableStateOf("") }
-    var surgeries by rememberSaveable { mutableStateOf("") }
-    var chronic by rememberSaveable { mutableStateOf("") }
-    var breakfast by rememberSaveable { mutableStateOf<String?>(null) }
-    var lunch by rememberSaveable { mutableStateOf<String?>(null) }
-    var dinner by rememberSaveable { mutableStateOf<String?>(null) }
+private fun PatientProfileForm(
+    onBack: () -> Unit,
+    onSave: (PatientProfile) -> Unit,
+    loading: Boolean,
+    initial: PatientProfile? = null,
+    editNames: Pair<String, String>? = null,
+    onSaveEdit: (String, String, PatientProfile) -> Unit = { _, _, _ -> }
+) {
+    val editing = editNames != null
+    var firstName by rememberSaveable { mutableStateOf(editNames?.first ?: "") }
+    var lastName by rememberSaveable { mutableStateOf(editNames?.second ?: "") }
+    var firstNameError by remember { mutableStateOf<String?>(null) }
+    var age by rememberSaveable { mutableStateOf(initial?.edad?.toString() ?: "") }
+    var sex by rememberSaveable { mutableStateOf(initial?.sexo ?: "") }
+    var weight by rememberSaveable { mutableStateOf(initial?.peso?.toString()?.removeSuffix(".0") ?: "") }
+    var height by rememberSaveable { mutableStateOf(initial?.estatura?.toString() ?: "") }
+    var blood by rememberSaveable { mutableStateOf(initial?.grupoSanguineo ?: "") }
+    var allergies by rememberSaveable { mutableStateOf(initial?.alergias ?: "") }
+    var conditions by rememberSaveable { mutableStateOf(initial?.padecimientos ?: "") }
+    var surgeries by rememberSaveable { mutableStateOf(initial?.cirugias ?: "") }
+    var chronic by rememberSaveable { mutableStateOf(initial?.enfermedadesCronicas ?: "") }
+    var breakfast by rememberSaveable { mutableStateOf(initial?.horarioDesayuno) }
+    var lunch by rememberSaveable { mutableStateOf(initial?.horarioComida) }
+    var dinner by rememberSaveable { mutableStateOf(initial?.horarioCena) }
     var errors by remember { mutableStateOf(PatientErrors()) }
 
     fun submit() {
@@ -91,19 +138,22 @@ private fun PatientProfileForm(onBack: () -> Unit, onSave: (PatientProfile) -> U
             blood = if (blood.isEmpty()) "Selecciona tu grupo sanguíneo" else null
         )
         errors = e
-        if (e.any()) return
-        onSave(
-            PatientProfile(
-                edad = a!!, sexo = sex, peso = w!!, estatura = h!!, grupoSanguineo = blood,
-                alergias = allergies.trim(), padecimientos = conditions.trim(),
-                cirugias = surgeries.trim(),
-                enfermedadesCronicas = chronic.trim(),
-                horarioDesayuno = breakfast, horarioComida = lunch, horarioCena = dinner
-            )
+        if (editing && firstName.isBlank()) firstNameError = "El nombre es obligatorio"
+        if (e.any() || (editing && firstName.isBlank())) return
+        val profile = PatientProfile(
+            edad = a!!, sexo = sex, peso = w!!, estatura = h!!, grupoSanguineo = blood,
+            alergias = allergies.trim(), padecimientos = conditions.trim(),
+            cirugias = surgeries.trim(),
+            enfermedadesCronicas = chronic.trim(),
+            horarioDesayuno = breakfast, horarioComida = lunch, horarioCena = dinner
         )
+        if (editing) onSaveEdit(firstName.trim(), lastName.trim(), profile) else onSave(profile)
     }
 
-    ProfileLayout(UserRole.PATIENT, onBack, onSubmit = ::submit, loading = loading) {
+    ProfileLayout(UserRole.PATIENT, onBack, onSubmit = ::submit, loading = loading, editing = editing) {
+        if (editing) {
+            NameFields(firstName, lastName, { firstName = it; firstNameError = null }, { lastName = it }, firstNameError)
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             ProfileTextField(age, { age = it.filter(Char::isDigit).take(3); errors = errors.copy(age = null) },
                 "Edad", Modifier.weight(1f), placeholder = "Ej. 34",
@@ -137,16 +187,33 @@ private fun PatientProfileForm(onBack: () -> Unit, onSave: (PatientProfile) -> U
 /* ------------------------------ CUIDADOR ------------------------------ */
 
 @Composable
-private fun CaregiverProfileForm(onBack: () -> Unit, onSave: (CaregiverProfile) -> Unit, loading: Boolean) {
-    var experience by rememberSaveable { mutableStateOf("") }
+private fun CaregiverProfileForm(
+    onBack: () -> Unit,
+    onSave: (CaregiverProfile) -> Unit,
+    loading: Boolean,
+    initial: CaregiverProfile? = null,
+    editNames: Pair<String, String>? = null,
+    onSaveEdit: (String, String, CaregiverProfile) -> Unit = { _, _, _ -> }
+) {
+    val editing = editNames != null
+    var firstName by rememberSaveable { mutableStateOf(editNames?.first ?: "") }
+    var lastName by rememberSaveable { mutableStateOf(editNames?.second ?: "") }
+    var firstNameError by remember { mutableStateOf<String?>(null) }
+    var experience by rememberSaveable { mutableStateOf(initial?.expProfesional ?: "") }
     var expError by remember { mutableStateOf<String?>(null) }
 
     fun submit() {
-        if (experience.trim().length < 10) { expError = "Cuéntanos un poco más sobre tu experiencia"; return }
-        onSave(CaregiverProfile(experience.trim()))
+        if (editing && firstName.isBlank()) firstNameError = "El nombre es obligatorio"
+        if (experience.trim().length < 10) expError = "Cuéntanos un poco más sobre tu experiencia"
+        if ((editing && firstName.isBlank()) || experience.trim().length < 10) return
+        val profile = CaregiverProfile(experience.trim())
+        if (editing) onSaveEdit(firstName.trim(), lastName.trim(), profile) else onSave(profile)
     }
 
-    ProfileLayout(UserRole.CAREGIVER, onBack, onSubmit = ::submit, loading = loading) {
+    ProfileLayout(UserRole.CAREGIVER, onBack, onSubmit = ::submit, loading = loading, editing = editing) {
+        if (editing) {
+            NameFields(firstName, lastName, { firstName = it; firstNameError = null }, { lastName = it }, firstNameError)
+        }
         ProfileTextField(
             experience, { experience = it; expError = null }, "Experiencia Profesional", Modifier.fillMaxWidth(),
             placeholder = "Escribe detalladamente tu trayectoria, experiencia en el cuidado de pacientes, adultos mayores o historial médico...",
@@ -164,24 +231,25 @@ private fun ProfileLayout(
     onBack: () -> Unit,
     onSubmit: () -> Unit,
     loading: Boolean,
+    editing: Boolean = false,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val focus = LocalFocusManager.current
     Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 24.dp)) {
-        ProfileHeader(role, onBack)
+        ProfileHeader(role, onBack, editing)
         // Formulario con scroll; el botón queda fijo abajo como en el mockup
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             content = content
         )
-        PrimaryButton("GUARDAR Y COMENZAR", onClick = { focus.clearFocus(); onSubmit() }, loading = loading)
+        PrimaryButton(if (editing) "GUARDAR CAMBIOS" else "GUARDAR Y COMENZAR", onClick = { focus.clearFocus(); onSubmit() }, loading = loading)
         Spacer(Modifier.height(16.dp))
     }
 }
 
 @Composable
-private fun ProfileHeader(role: UserRole, onBack: () -> Unit) {
+private fun ProfileHeader(role: UserRole, onBack: () -> Unit, editing: Boolean) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             IconButton(onClick = onBack, Modifier.align(Alignment.CenterStart).size(48.dp)) {
@@ -190,10 +258,10 @@ private fun ProfileHeader(role: UserRole, onBack: () -> Unit) {
             Box(Modifier.align(Alignment.Center)) { BrandHeader(compact = true) }
         }
         Spacer(Modifier.height(8.dp))
-        Text("Completar Perfil", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MRColors.Navy)
+        Text(if (editing) "Mi Perfil" else "Completar Perfil", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MRColors.Navy)
         Spacer(Modifier.height(10.dp))
         FlowRowCenter {
-            InfoChip("Paso 2 de 2", MRColors.ChipGray)
+            if (!editing) InfoChip("Paso 2 de 2", MRColors.ChipGray)
             if (role == UserRole.PATIENT) InfoChip("Rol: Paciente", MRColors.MintStrong)
             else InfoChip("Rol: Cuidador", MRColors.Orange)
         }

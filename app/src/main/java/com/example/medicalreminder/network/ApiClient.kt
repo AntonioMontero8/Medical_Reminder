@@ -9,6 +9,7 @@ import com.example.medicalreminder.data.PanelData
 import com.example.medicalreminder.data.PatientCard
 import com.example.medicalreminder.data.PatientProfile
 import com.example.medicalreminder.data.PendingRegistration
+import com.example.medicalreminder.data.ProfileData
 import com.example.medicalreminder.data.UserSession
 import com.example.medicalreminder.ui.auth.UserRole
 import kotlinx.coroutines.Dispatchers
@@ -16,30 +17,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
-import android.os.Build
 
 class ApiException(val code: Int, override val message: String) : Exception(message)
 
 object ApiClient {
-    // Emulador: 10.0.2.2 apunta al localhost de tu PC.
-    // Celular físico: "localhost" si usas `adb reverse tcp:3000 tcp:3000`,
-    // o la IP de tu PC en el Wi-Fi (por ejemplo "192.168.1.50").
-    private const val PC_IP_FOR_PHONE = "localhost"
-
-    private val IS_EMULATOR: Boolean
-        get() = Build.HARDWARE.contains("ranchu") ||
-                Build.HARDWARE.contains("goldfish") ||
-                Build.PRODUCT.contains("sdk") ||
-                Build.PRODUCT.contains("emulator") ||
-                Build.MODEL.contains("sdk_gphone") ||
-                Build.MODEL.contains("Emulator") ||
-                Build.MODEL.contains("Android SDK") ||
-                Build.FINGERPRINT.contains("generic") ||
-                Build.FINGERPRINT.contains("emulator") ||
-                Build.FINGERPRINT.contains("emu64")
-
-    val BASE_URL: String
-        get() = if (IS_EMULATOR) "http://10.0.2.2:3000" else "http://$PC_IP_FOR_PHONE:3000"
+    // Emulador de Android Studio: 10.0.2.2 apunta al localhost de tu PC.
+    // Celular físico: usa la IP local de tu PC, por ejemplo "http://192.168.1.50:3000".
+    const val BASE_URL = "http://10.0.2.2:3000"
 
     private fun tipoUsuario(role: UserRole) = if (role == UserRole.PATIENT) 1 else 2
 
@@ -51,28 +35,74 @@ object ApiClient {
         put("tipoUsuario", tipoUsuario(p.role))
     }
 
-    fun patientBody(p: PendingRegistration, x: PatientProfile): JSONObject = baseBody(p).apply {
-        put("perfil", JSONObject().apply {
-            put("edad", x.edad)
-            put("sexo", x.sexo)
-            put("peso", x.peso.toString().toDouble()) // evita 70.0999984 al convertir Float -> Double
-            put("estatura", x.estatura)
-            put("grupoSanguineo", x.grupoSanguineo)
-            put("alergias", x.alergias)
-            put("padecimientos", x.padecimientos)
-            put("cirugias", x.cirugias)
-            put("enfermedadesCronicas", x.enfermedadesCronicas)
-            put("horarioDesayuno", x.horarioDesayuno ?: JSONObject.NULL)
-            put("horarioComida", x.horarioComida ?: JSONObject.NULL)
-            put("horarioCena", x.horarioCena ?: JSONObject.NULL)
-        })
+    private fun patientJson(x: PatientProfile) = JSONObject().apply {
+        put("edad", x.edad)
+        put("sexo", x.sexo)
+        put("peso", x.peso.toString().toDouble()) // evita 70.0999984 al convertir Float -> Double
+        put("estatura", x.estatura)
+        put("grupoSanguineo", x.grupoSanguineo)
+        put("alergias", x.alergias)
+        put("padecimientos", x.padecimientos)
+        put("cirugias", x.cirugias)
+        put("enfermedadesCronicas", x.enfermedadesCronicas)
+        put("horarioDesayuno", x.horarioDesayuno ?: JSONObject.NULL)
+        put("horarioComida", x.horarioComida ?: JSONObject.NULL)
+        put("horarioCena", x.horarioCena ?: JSONObject.NULL)
     }
 
-    fun caregiverBody(p: PendingRegistration, x: CaregiverProfile): JSONObject = baseBody(p).apply {
-        put("perfil", JSONObject().apply {
-            put("expProfesional", x.expProfesional)
-        })
+    private fun caregiverJson(x: CaregiverProfile) = JSONObject().apply {
+        put("expProfesional", x.expProfesional)
     }
+
+    fun patientBody(p: PendingRegistration, x: PatientProfile): JSONObject =
+        baseBody(p).apply { put("perfil", patientJson(x)) }
+
+    fun caregiverBody(p: PendingRegistration, x: CaregiverProfile): JSONObject =
+        baseBody(p).apply { put("perfil", caregiverJson(x)) }
+
+    // ---------------- Perfil: ver y editar ----------------
+
+    private fun JSONObject.strOrNull(key: String): String? = if (isNull(key)) null else getString(key)
+
+    /** Lee el perfil del usuario con sesión (GET /api/perfil). */
+    suspend fun getProfile(token: String): ProfileData {
+        val j = call("GET", "/api/perfil", null, token)
+        val perfil = j.getJSONObject("perfil")
+        return if (j.getInt("tipo_usuario") == 1) {
+            ProfileData(
+                nombre = j.optString("nombre"), apellido = j.optString("apellido"),
+                patient = PatientProfile(
+                    edad = perfil.getInt("edad"),
+                    sexo = perfil.optString("sexo"),
+                    peso = perfil.getDouble("peso").toFloat(),
+                    estatura = perfil.getInt("estatura"),
+                    grupoSanguineo = perfil.optString("grupoSanguineo"),
+                    alergias = perfil.optString("alergias"),
+                    padecimientos = perfil.optString("padecimientos"),
+                    cirugias = perfil.optString("cirugias"),
+                    enfermedadesCronicas = perfil.optString("enfermedadesCronicas"),
+                    horarioDesayuno = perfil.strOrNull("horarioDesayuno"),
+                    horarioComida = perfil.strOrNull("horarioComida"),
+                    horarioCena = perfil.strOrNull("horarioCena")
+                )
+            )
+        } else {
+            ProfileData(
+                nombre = j.optString("nombre"), apellido = j.optString("apellido"),
+                caregiver = CaregiverProfile(perfil.optString("expProfesional"))
+            )
+        }
+    }
+
+    suspend fun updatePatientProfile(token: String, nombre: String, apellido: String, x: PatientProfile): UserSession =
+        parseUser(call("PUT", "/api/perfil", JSONObject().apply {
+            put("nombre", nombre); put("apellido", apellido); put("perfil", patientJson(x))
+        }, token).getJSONObject("user"))
+
+    suspend fun updateCaregiverProfile(token: String, nombre: String, apellido: String, x: CaregiverProfile): UserSession =
+        parseUser(call("PUT", "/api/perfil", JSONObject().apply {
+            put("nombre", nombre); put("apellido", apellido); put("perfil", caregiverJson(x))
+        }, token).getJSONObject("user"))
 
     /** Crea la cuenta. Devuelve el token y el usuario, o lanza ApiException / IOException. */
     suspend fun register(body: JSONObject): AuthResult =

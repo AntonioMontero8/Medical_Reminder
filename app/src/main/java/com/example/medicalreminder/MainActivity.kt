@@ -11,6 +11,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Alignment
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -31,6 +36,7 @@ import com.example.medicalreminder.ui.link.LinkResponseScreen
 import com.example.medicalreminder.ui.link.MirrorPanelScreen
 import com.example.medicalreminder.ui.link.PatientLinksScreen
 import com.example.medicalreminder.ui.link.PatientQrScreen
+import com.example.medicalreminder.ui.profile.EditProfileScreen
 import com.example.medicalreminder.ui.profile.ProfileSetupScreen
 import com.example.medicalreminder.ui.theme.MRColors
 import com.example.medicalreminder.ui.theme.MedicalReminderTheme
@@ -41,6 +47,7 @@ object Routes {
     const val REGISTER = "register"
     const val PROFILE = "profile"
     const val HOME = "home"
+    const val EDIT_PROFILE = "edit_profile"
 
     // Paciente
     const val CAREGIVERS = "caregivers"
@@ -59,6 +66,7 @@ class MainActivity : ComponentActivity() {
     private val signUpVm: SignUpViewModel by viewModels()
     private val authVm: AuthViewModel by viewModels()
     private val linkVm: LinkViewModel by viewModels()
+    private val profileVm: ProfileViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,7 +74,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MedicalReminderTheme {
                 Box(Modifier.fillMaxSize().background(MRColors.Background)) {
-                    AppNavigation(signUpVm, authVm, linkVm)
+                    AppNavigation(signUpVm, authVm, linkVm, profileVm)
                 }
             }
         }
@@ -76,7 +84,7 @@ class MainActivity : ComponentActivity() {
 private const val DURATION = 350
 
 @Composable
-fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: LinkViewModel) {
+fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: LinkViewModel, profileVm: ProfileViewModel) {
     val nav = rememberNavController()
     val left = AnimatedContentTransitionScope.SlideDirection.Left
     val right = AnimatedContentTransitionScope.SlideDirection.Right
@@ -177,6 +185,7 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
             LaunchedEffect(Unit) {
                 authVm.refreshSession {
                     linkVm.reset()
+                    profileVm.reset()
                     Toast.makeText(context, "Tu sesión expiró. Inicia sesión de nuevo.", Toast.LENGTH_LONG).show()
                     nav.navigate(Routes.LOGIN) { popUpTo(Routes.HOME) { inclusive = true } }
                 }
@@ -197,14 +206,62 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
                     pendingRequests = if (isPatient) linkVm.links.count { it.pendiente } else 0,
                     onOpenCaregivers = { nav.navigate(Routes.CAREGIVERS) },
                     onOpenPatients = { nav.navigate(Routes.PATIENTS) },
-                    onLinkPatient = { nav.navigate(Routes.LINK_SCAN) },
+                    onComingSoon = { name ->
+                        Toast.makeText(context, "$name estará disponible pronto", Toast.LENGTH_SHORT).show()
+                    },
+                    onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) },
                     onLogout = {
                         nav.navigate(Routes.LOGIN) { popUpTo(Routes.HOME) { inclusive = true } }
                         authVm.logout()
                         linkVm.reset()
+                        profileVm.reset()
                     }
                 )
             }
+        }
+
+        // ---------------- Editar perfil ----------------
+        composable(Routes.EDIT_PROFILE) {
+            val context = LocalContext.current
+            val user = authVm.session.user
+            LaunchedEffect(Unit) { profileVm.load() }
+            LaunchedEffect(profileVm.error) {
+                profileVm.error?.let {
+                    Toast.makeText(context, it, Toast.LENGTH_LONG).show()
+                    profileVm.error = null
+                }
+            }
+            val data = profileVm.profile
+            val role = user?.role
+            if (user == null || role == null) return@composable
+            if (data == null) {
+                // Cargando los datos actuales (o no se pudieron traer: se puede volver atrás)
+                Box(Modifier.fillMaxSize().systemBarsPadding()) {
+                    if (profileVm.loading) {
+                        CircularProgressIndicator(Modifier.align(Alignment.Center))
+                    }
+                    TextButton(onClick = { nav.popBackStack() }, modifier = Modifier.align(Alignment.BottomCenter)) {
+                        Text("Volver")
+                    }
+                }
+                return@composable
+            }
+            val saved = {
+                Toast.makeText(context, "Perfil actualizado", Toast.LENGTH_SHORT).show()
+                nav.popBackStack()
+                Unit
+            }
+            EditProfileScreen(
+                role = role,
+                firstName = data.nombre,
+                lastName = data.apellido,
+                patient = data.patient,
+                caregiver = data.caregiver,
+                loading = profileVm.saving,
+                onBack = { if (!profileVm.saving) nav.popBackStack() },
+                onSavePatient = { n, a, p -> profileVm.savePatient(n, a, p, saved) },
+                onSaveCaregiver = { n, a, c -> profileVm.saveCaregiver(n, a, c, saved) }
+            )
         }
 
         // ---------------- Vinculación: paciente ----------------
