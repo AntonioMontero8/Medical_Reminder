@@ -74,6 +74,7 @@ fun HomeScreen(
     onOpenCaregivers: () -> Unit,
     onOpenPatients: () -> Unit,
     onEditProfile: () -> Unit,
+    onScanRecipe: () -> Unit,
     onComingSoon: (String) -> Unit,
     pendingRequests: Int = 0
 ) {
@@ -162,7 +163,7 @@ fun HomeScreen(
                     ActionCard(
                         Icons.Outlined.DocumentScanner, "Escanear receta médica",
                         "Toma una foto de tu prescripción y crearemos tus alarmas automáticamente. También puedes hacerlo de forma manual.",
-                        soon("Escanear receta médica")
+                        onScanRecipe
                     )
                     ActionCard(
                         Icons.Outlined.Medication, "Registrar un medicamento",
