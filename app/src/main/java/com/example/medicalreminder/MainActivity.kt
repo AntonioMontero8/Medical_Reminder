@@ -28,6 +28,9 @@ import com.example.medicalreminder.data.PendingRegistration
 import com.example.medicalreminder.ui.auth.LoginScreen
 import com.example.medicalreminder.ui.auth.RegisterScreen
 import com.example.medicalreminder.ui.auth.UserRole
+import com.example.medicalreminder.ui.care.ChatScreen
+import com.example.medicalreminder.ui.care.MessagesScreen
+import com.example.medicalreminder.ui.care.PatientMedicationsScreen
 import com.example.medicalreminder.ui.home.HomeScreen
 import com.example.medicalreminder.ui.link.CaregiverPatientsScreen
 import com.example.medicalreminder.ui.link.CaregiverScanScreen
@@ -36,6 +39,8 @@ import com.example.medicalreminder.ui.link.LinkResponseScreen
 import com.example.medicalreminder.ui.link.MirrorPanelScreen
 import com.example.medicalreminder.ui.link.PatientLinksScreen
 import com.example.medicalreminder.ui.link.PatientQrScreen
+import com.example.medicalreminder.ui.medication.MedicationFormScreen
+import com.example.medicalreminder.ui.medication.MedicationListScreen
 import com.example.medicalreminder.ui.profile.EditProfileScreen
 import com.example.medicalreminder.ui.profile.ProfileSetupScreen
 import com.example.medicalreminder.ui.theme.MRColors
@@ -48,6 +53,10 @@ object Routes {
     const val PROFILE = "profile"
     const val HOME = "home"
     const val EDIT_PROFILE = "edit_profile"
+    const val MEDICATIONS = "medications"
+    const val MED_FORM = "med_form"
+    const val MED_EDIT = "med_edit/{id}"
+    fun medEdit(id: Int) = "med_edit/$id"
 
     // Paciente
     const val CAREGIVERS = "caregivers"
@@ -60,6 +69,13 @@ object Routes {
     const val LINK_SCAN = "link_scan"
     const val PANEL = "panel/{id}"
     fun panel(id: Int) = "panel/$id"
+    const val PATIENT_MEDS = "patient_meds/{id}"
+    fun patientMeds(id: Int) = "patient_meds/$id"
+
+    // Mensajes entre cuidadores
+    const val MESSAGES = "messages"
+    const val CHAT = "chat/{id}"
+    fun chat(id: Int) = "chat/$id"
 }
 
 class MainActivity : ComponentActivity() {
@@ -67,6 +83,8 @@ class MainActivity : ComponentActivity() {
     private val authVm: AuthViewModel by viewModels()
     private val linkVm: LinkViewModel by viewModels()
     private val profileVm: ProfileViewModel by viewModels()
+    private val medVm: MedicationViewModel by viewModels()
+    private val careVm: CareTeamViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -74,7 +92,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MedicalReminderTheme {
                 Box(Modifier.fillMaxSize().background(MRColors.Background)) {
-                    AppNavigation(signUpVm, authVm, linkVm, profileVm)
+                    AppNavigation(signUpVm, authVm, linkVm, profileVm, medVm, careVm)
                 }
             }
         }
@@ -84,7 +102,10 @@ class MainActivity : ComponentActivity() {
 private const val DURATION = 350
 
 @Composable
-fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: LinkViewModel, profileVm: ProfileViewModel) {
+fun AppNavigation(
+    signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: LinkViewModel,
+    profileVm: ProfileViewModel, medVm: MedicationViewModel, careVm: CareTeamViewModel
+) {
     val nav = rememberNavController()
     val left = AnimatedContentTransitionScope.SlideDirection.Left
     val right = AnimatedContentTransitionScope.SlideDirection.Right
@@ -180,12 +201,15 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
             LaunchedEffect(live) { if (live != null) lastKnown = live }
             val user = live ?: lastKnown
             val isPatient = user?.role == UserRole.PATIENT
+            val isCaregiver = user?.role == UserRole.CAREGIVER
 
             // Valida el token guardado con el servidor (y refresca el nombre si cambió)
             LaunchedEffect(Unit) {
                 authVm.refreshSession {
                     linkVm.reset()
                     profileVm.reset()
+                    medVm.reset()
+                    careVm.reset()
                     Toast.makeText(context, "Tu sesión expiró. Inicia sesión de nuevo.", Toast.LENGTH_LONG).show()
                     nav.navigate(Routes.LOGIN) { popUpTo(Routes.HOME) { inclusive = true } }
                 }
@@ -195,6 +219,16 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
                 if (isPatient) {
                     while (true) {
                         linkVm.refreshLinks(silent = true)
+                        delay(10_000)
+                    }
+                }
+            }
+
+            // El cuidador revisa cada 10 s si le llegaron mensajes de otros cuidadores
+            LaunchedEffect(isCaregiver) {
+                if (isCaregiver) {
+                    while (true) {
+                        careVm.refreshConversations(silent = true)
                         delay(10_000)
                     }
                 }
@@ -210,14 +244,82 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
                         Toast.makeText(context, "$name estará disponible pronto", Toast.LENGTH_SHORT).show()
                     },
                     onEditProfile = { nav.navigate(Routes.EDIT_PROFILE) },
+                    onRegisterMedication = { nav.navigate(Routes.MED_FORM) },
+                    onOpenMedications = { nav.navigate(Routes.MEDICATIONS) },
+                    onOpenMessages = { nav.navigate(Routes.MESSAGES) },
+                    unreadMessages = if (isCaregiver) careVm.unreadTotal else 0,
                     onLogout = {
                         nav.navigate(Routes.LOGIN) { popUpTo(Routes.HOME) { inclusive = true } }
                         authVm.logout()
                         linkVm.reset()
                         profileVm.reset()
+                        medVm.reset()
+                        careVm.reset()
                     }
                 )
             }
+        }
+
+        // ---------------- Botiquín: registrar y ver medicamentos ----------------
+        composable(Routes.MEDICATIONS) {
+            MedicationListScreen(
+                vm = medVm,
+                onBack = { nav.popBackStack() },
+                onAdd = { nav.navigate(Routes.MED_FORM) },
+                onEdit = { id -> nav.navigate(Routes.medEdit(id)) }
+            )
+        }
+        composable(Routes.MED_FORM) {
+            val context = LocalContext.current
+            MedicationFormScreen(
+                vm = medVm,
+                onBack = { nav.popBackStack() },
+                onSaved = {
+                    Toast.makeText(context, "Medicamento guardado", Toast.LENGTH_SHORT).show()
+                    // Si se abrió desde la lista, se vuelve a ella; si se abrió desde el inicio, se muestra la lista
+                    if (!nav.popBackStack(Routes.MEDICATIONS, false)) {
+                        nav.navigate(Routes.MEDICATIONS) { popUpTo(Routes.MED_FORM) { inclusive = true } }
+                    }
+                }
+            )
+        }
+
+        composable(Routes.MED_EDIT, arguments = idArg) { entry ->
+            val context = LocalContext.current
+            val id = entry.arguments?.getInt("id") ?: return@composable
+            MedicationFormScreen(
+                vm = medVm,
+                medicationId = id,
+                onBack = { nav.popBackStack() },
+                onSaved = {
+                    Toast.makeText(context, "Cambios guardados", Toast.LENGTH_SHORT).show()
+                    nav.popBackStack()
+                },
+                onDeleted = {
+                    Toast.makeText(context, "Medicamento eliminado", Toast.LENGTH_SHORT).show()
+                    nav.popBackStack()
+                }
+            )
+        }
+
+        // ---------------- Cuidador: botiquín del paciente y mensajes entre cuidadores ----------------
+        composable(Routes.PATIENT_MEDS, arguments = idArg) { entry ->
+            val id = entry.arguments?.getInt("id") ?: return@composable
+            val name = linkVm.links.firstOrNull { it.idVinculacion == id }?.fullName
+                ?: linkVm.panel?.let { "${it.nombre} ${it.apellido}".trim() }
+                ?: "tu paciente"
+            PatientMedicationsScreen(vm = careVm, linkId = id, patientName = name, onBack = { nav.popBackStack() })
+        }
+        composable(Routes.MESSAGES) {
+            MessagesScreen(
+                vm = careVm,
+                onBack = { nav.popBackStack() },
+                onOpenChat = { id, name -> careVm.openChat(id, name); nav.navigate(Routes.chat(id)) }
+            )
+        }
+        composable(Routes.CHAT, arguments = idArg) { entry ->
+            val id = entry.arguments?.getInt("id") ?: return@composable
+            ChatScreen(vm = careVm, otherId = id, onBack = { nav.popBackStack() })
         }
 
         // ---------------- Editar perfil ----------------
@@ -315,9 +417,11 @@ fun AppNavigation(signUpVm: SignUpViewModel, authVm: AuthViewModel, linkVm: Link
         composable(Routes.PANEL, arguments = idArg) { entry ->
             val id = entry.arguments?.getInt("id") ?: return@composable
             MirrorPanelScreen(
-                vm = linkVm, id = id,
+                vm = linkVm, id = id, careVm = careVm,
                 onBack = { nav.popBackStack() },
-                onUnlinked = { nav.popBackStack() }
+                onUnlinked = { nav.popBackStack() },
+                onOpenMedications = { nav.navigate(Routes.patientMeds(id)) },
+                onOpenChat = { otherId, name -> careVm.openChat(otherId, name); nav.navigate(Routes.chat(otherId)) }
             )
         }
     }

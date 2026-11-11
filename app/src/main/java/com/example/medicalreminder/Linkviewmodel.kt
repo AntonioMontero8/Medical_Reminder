@@ -110,6 +110,11 @@ class LinkViewModel(app: Application) : AndroidViewModel(app) {
         onDone()
     }
 
+    fun setMaster(id: Int, onDone: () -> Unit) = launchApi { t ->
+        ApiClient.setMaster(t, id)
+        links = ApiClient.listLinks(t)
+        onDone()
+    }
     fun unlink(id: Int, onDone: () -> Unit) = launchApi { t ->
         ApiClient.unlink(t, id)
         links = ApiClient.listLinks(t)

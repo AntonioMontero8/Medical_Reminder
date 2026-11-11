@@ -2,15 +2,18 @@ package com.example.medicalreminder.ui.link
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Alarm
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,6 +33,8 @@ import com.example.medicalreminder.data.PatientCard
 import com.example.medicalreminder.data.parseLinkCode
 import com.example.medicalreminder.ui.auth.AuthTextField
 import com.example.medicalreminder.ui.auth.PrimaryButton
+import com.example.medicalreminder.CareTeamViewModel
+import com.example.medicalreminder.ui.care.TeamCard
 import com.example.medicalreminder.ui.home.HomeCard
 import com.example.medicalreminder.ui.home.HomeItem
 import com.example.medicalreminder.ui.theme.MRColors
@@ -54,22 +59,25 @@ fun CaregiverPatientsScreen(
 
     LinkScaffold(
         title = "Mis pacientes",
+        caption = "Cuidador",
         onBack = onBack,
         bottom = { PrimaryButton("VINCULAR PACIENTE", onClick = onAddPatient) }
     ) {
         BodyText("Toca un paciente para ver su tablero.")
         when {
-            !vm.linksLoaded -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            !vm.linksLoaded -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally), color = MRColors.Blue)
             vm.links.isEmpty() -> InfoCard(
                 "Aún no tienes pacientes",
-                "Toca «Vincular paciente» y escanea el código QR que te muestre."
+                "Toca «Vincular paciente» y escanea el código QR que te muestre.",
+                icon = Icons.Outlined.QrCode2
             )
             else -> vm.links.forEach { l ->
                 LinkListItem(
                     name = l.fullName,
                     subtitle = if (l.pendiente) "Esperando a que acepte tu solicitud" else "Toca para ver su tablero",
                     chipText = if (l.pendiente) "Pendiente" else "Vinculado",
-                    chipColor = if (l.pendiente) MRColors.Orange else MRColors.MintStrong,
+                    chipColor = if (l.pendiente) MRColors.SkyBlue else MRColors.Green,
+                    chipIcon = if (l.pendiente) Icons.Outlined.Schedule else Icons.Outlined.CheckCircle,
                     onClick = { if (l.pendiente) cancelTarget = l else onOpenPanel(l.idVinculacion) }
                 )
             }
@@ -103,8 +111,12 @@ fun CaregiverScanScreen(vm: LinkViewModel, onBack: () -> Unit, onRequestSent: ()
         vm.previewCode(code) { name -> candidate = code to name }
     }
 
-    LinkScaffold(title = "Vincular paciente", onBack = onBack) {
-        BodyText("Pídele al paciente que abra «Mis cuidadores», toque «Vincular cuidador» y escanea el código QR de su pantalla.")
+    LinkScaffold(title = "Vincular paciente", caption = "Mis pacientes", onBack = onBack) {
+        InfoCard(
+            "Cómo vincularte",
+            "Pídele al paciente que abra «Mis cuidadores», toque «Vincular cuidador» y escanea el código QR de su pantalla.",
+            icon = Icons.Outlined.QrCode2
+        )
         PrimaryButton(
             "ESCANEAR CÓDIGO QR",
             onClick = { scanQrCode(context, { lookup(it) }, { vm.error = it }) },
@@ -112,7 +124,7 @@ fun CaregiverScanScreen(vm: LinkViewModel, onBack: () -> Unit, onRequestSent: ()
         )
         Text(
             "o escribe el código a mano",
-            fontSize = 18.sp, color = MRColors.TextGray,
+            fontSize = 18.sp, color = MRColors.Slate,
             textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
         )
         AuthTextField(
@@ -136,7 +148,15 @@ fun CaregiverScanScreen(vm: LinkViewModel, onBack: () -> Unit, onRequestSent: ()
 
 /** Módulo 3 (lado cuidador): tablero del paciente, solo lectura y según los permisos vigentes. */
 @Composable
-fun MirrorPanelScreen(vm: LinkViewModel, id: Int, onBack: () -> Unit, onUnlinked: () -> Unit) {
+fun MirrorPanelScreen(
+    vm: LinkViewModel,
+    id: Int,
+    careVm: CareTeamViewModel,
+    onBack: () -> Unit,
+    onUnlinked: () -> Unit,
+    onOpenMedications: () -> Unit,
+    onOpenChat: (Int, String) -> Unit
+) {
     var leaving by remember { mutableStateOf(false) }
     var confirmUnlink by remember { mutableStateOf(false) }
 
@@ -144,10 +164,13 @@ fun MirrorPanelScreen(vm: LinkViewModel, id: Int, onBack: () -> Unit, onUnlinked
     LaunchedEffect(id) {
         vm.clearPanel()
         vm.loadPanel(id)
+        careVm.clearTeam()
+        careVm.loadTeam(id)
         while (true) {
             delay(8000)
             vm.loadPanel(id, silent = true)
             vm.refreshLinks(silent = true)
+            careVm.loadTeam(id, silent = true)
         }
     }
     // Si el paciente terminó la vinculación, se sale del panel
@@ -162,6 +185,7 @@ fun MirrorPanelScreen(vm: LinkViewModel, id: Int, onBack: () -> Unit, onUnlinked
     val panel = vm.panel
     LinkScaffold(
         title = "Tablero",
+        caption = panel?.let { "Paciente" },
         onBack = onBack,
         bottom = {
             if (panel != null) {
@@ -170,38 +194,38 @@ fun MirrorPanelScreen(vm: LinkViewModel, id: Int, onBack: () -> Unit, onUnlinked
         }
     ) {
         if (panel == null) {
-            CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally), color = MRColors.Blue)
         } else {
-            Surface(shape = RoundedCornerShape(20.dp), color = MRColors.Orange, modifier = Modifier.fillMaxWidth()) {
+            val patientName = "${panel.nombre} ${panel.apellido}".trim()
+            // Cabecera del paciente: deja claro de quién es el tablero y que es solo lectura
+            WireCard {
                 Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.Visibility, contentDescription = null, tint = MRColors.Navy)
-                    Spacer(Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            "Estás viendo el tablero de ${"${panel.nombre} ${panel.apellido}".trim()}",
-                            fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy
-                        )
-                        Text("Solo lectura. Se actualiza solo.", fontSize = 15.sp, color = MRColors.Navy)
+                    Avatar(patientName, size = 56.dp)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(patientName, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = MRColors.Ink)
+                        StatusChip("Solo lectura", MRColors.SkyBlue, Icons.Outlined.Visibility)
+                        Text("Se actualiza solo.", fontSize = 15.sp, color = MRColors.Slate)
                     }
                 }
             }
-            val accent = MRColors.MintStrong
-            HomeCard(HomeItem(Icons.Outlined.Alarm, "Próxima toma", "Aquí verás qué medicamento sigue y a qué hora."), accent)
+            HomeCard(HomeItem(Icons.Outlined.Alarm, "Próxima toma", "Aquí verás qué medicamento sigue y a qué hora."))
             HomeCard(
-                HomeItem(Icons.Outlined.Inventory2, "Inventario", "Dosis que le quedan de cada medicamento.",
-                    locked = !panel.permisos.inventario), accent
+                HomeItem(Icons.Outlined.Inventory2, "Inventario", "Toca para ver sus medicamentos y las dosis que le quedan.",
+                    onClick = onOpenMedications, locked = !panel.permisos.inventario)
             )
             HomeCard(
                 HomeItem(Icons.Outlined.History, "Historial de tomas", "Si tomó sus medicamentos a su hora.",
-                    locked = !panel.permisos.historial), accent
+                    locked = !panel.permisos.historial)
             )
             if (panel.ficha != null) {
                 FichaCard(panel.edad, panel.ficha)
             } else {
                 HomeCard(
-                    HomeItem(Icons.Outlined.Lock, "Ficha médica", "Datos de salud del paciente.", locked = true), accent
+                    HomeItem(Icons.Outlined.Lock, "Ficha médica", "Datos de salud del paciente.", locked = true)
                 )
             }
+            TeamCard(careVm.team, onOpenChat)
             PermissionSummary(panel.permisos)
         }
     }
@@ -211,6 +235,7 @@ fun MirrorPanelScreen(vm: LinkViewModel, id: Int, onBack: () -> Unit, onUnlinked
             title = "¿Desvincular paciente?",
             text = "Dejarás de ver su tablero. Para volver a vincularlos, tendrás que escanear un código nuevo.",
             confirmText = "Desvincular",
+            danger = true,
             onConfirm = {
                 confirmUnlink = false
                 vm.unlink(id) { leaving = true; onUnlinked() }
@@ -222,21 +247,25 @@ fun MirrorPanelScreen(vm: LinkViewModel, id: Int, onBack: () -> Unit, onUnlinked
 
 @Composable
 private fun FichaCard(edad: Int?, f: PatientCard) {
-    Surface(
-        shape = RoundedCornerShape(20.dp), color = MRColors.FieldBg,
-        border = BorderStroke(1.dp, MRColors.FieldBorder), modifier = Modifier.fillMaxWidth()
-    ) {
+    WireCard(thin = true) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Ficha médica", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Description, contentDescription = null, tint = MRColors.Blue, modifier = Modifier.size(32.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("Ficha médica", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink)
+            }
+            HorizontalDivider(color = MRColors.SkyBlue)
             FichaRow("Edad", edad?.let { "$it años" })
             FichaRow("Sexo", f.sexo)
             FichaRow("Peso", f.peso?.let { if (it % 1.0 == 0.0) "${it.toInt()} kg" else "$it kg" })
             FichaRow("Estatura", f.estatura?.let { "$it cm" })
             FichaRow("Grupo sanguíneo", f.grupoSanguineo)
+            HorizontalDivider(color = MRColors.SkyBlue)
             FichaRow("Alergias", f.alergias)
             FichaRow("Padecimientos", f.padecimientos)
             FichaRow("Cirugías", f.cirugias)
             FichaRow("Enfermedades crónicas", f.enfermedadesCronicas)
+            HorizontalDivider(color = MRColors.SkyBlue)
             FichaRow("Desayuno", time12(f.desayuno))
             FichaRow("Comida", time12(f.comida))
             FichaRow("Cena", time12(f.cena))
@@ -247,18 +276,19 @@ private fun FichaCard(edad: Int?, f: PatientCard) {
 @Composable
 private fun FichaRow(label: String, value: String?) {
     Column {
-        Text(label, fontSize = 14.sp, color = MRColors.TextGray)
-        Text(value ?: "Sin registrar", fontSize = 18.sp, color = MRColors.Navy)
+        Text(label, fontSize = 14.sp, color = MRColors.Slate)
+        Text(value ?: "Sin registrar", fontSize = 18.sp, color = MRColors.Ink)
     }
 }
 
 @Composable
 private fun PermissionSummary(p: LinkPermissions) {
     Surface(
-        shape = RoundedCornerShape(20.dp), color = MRColors.MintSoft, modifier = Modifier.fillMaxWidth()
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        color = MRColors.IceBlue, modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Lo que el paciente te permite", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy)
+            Text("Lo que el paciente te permite", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink)
             listOf(
                 "Ficha médica" to p.ficha,
                 "Inventario" to p.inventario,
@@ -267,15 +297,17 @@ private fun PermissionSummary(p: LinkPermissions) {
                 "Gestionar medicamentos" to p.gestionar
             ).forEach { (label, allowed) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Permitido = palomita azul; sin permiso = candado gris (además del texto; el azul da más contraste que el verde)
                     Icon(
                         if (allowed) Icons.Outlined.CheckCircle else Icons.Outlined.Lock,
                         contentDescription = null,
-                        tint = if (allowed) MRColors.Navy else MRColors.TextGray
+                        tint = if (allowed) MRColors.Blue else MRColors.Slate
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
                         if (allowed) label else "$label (sin permiso)",
-                        fontSize = 17.sp, color = if (allowed) MRColors.Navy else MRColors.TextGray
+                        fontSize = 17.sp, color = MRColors.Ink,
+                        fontWeight = if (allowed) FontWeight.Medium else FontWeight.Normal
                     )
                 }
             }

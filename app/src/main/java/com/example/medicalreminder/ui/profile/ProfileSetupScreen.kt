@@ -34,6 +34,9 @@ import com.example.medicalreminder.data.PatientProfile
 import com.example.medicalreminder.ui.auth.BrandHeader
 import com.example.medicalreminder.ui.auth.PrimaryButton
 import com.example.medicalreminder.ui.auth.UserRole
+import com.example.medicalreminder.ui.link.BackButton
+import com.example.medicalreminder.ui.link.SectionLabel
+import com.example.medicalreminder.ui.link.StatusChip
 import com.example.medicalreminder.ui.theme.MRColors
 
 private val SEX_OPTIONS = listOf("Masculino", "Femenino", "Otro")
@@ -152,8 +155,10 @@ private fun PatientProfileForm(
 
     ProfileLayout(UserRole.PATIENT, onBack, onSubmit = ::submit, loading = loading, editing = editing) {
         if (editing) {
+            SectionLabel("Datos personales", Modifier.padding(top = 0.dp))
             NameFields(firstName, lastName, { firstName = it; firstNameError = null }, { lastName = it }, firstNameError)
         }
+        SectionLabel("Datos físicos")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
             ProfileTextField(age, { age = it.filter(Char::isDigit).take(3); errors = errors.copy(age = null) },
                 "Edad", Modifier.weight(1f), placeholder = "Ej. 34",
@@ -171,6 +176,7 @@ private fun PatientProfileForm(
         }
         DropdownField("Grupo Sanguíneo", blood, BLOOD_OPTIONS, { blood = it; errors = errors.copy(blood = null) },
             Modifier.fillMaxWidth(), error = errors.blood)
+        SectionLabel("Historial médico")
         ProfileTextField(allergies, { allergies = it }, "Alergias", Modifier.fillMaxWidth(),
             singleLine = false, minLines = 2, maxLines = 4)
         ProfileTextField(conditions, { conditions = it }, "Padecimientos", Modifier.fillMaxWidth(),
@@ -179,6 +185,7 @@ private fun PatientProfileForm(
             placeholder = "Ej. Apendicectomía, cesárea", singleLine = false, minLines = 2, maxLines = 4)
         ProfileTextField(chronic, { chronic = it }, "Enfermedades Crónicas", Modifier.fillMaxWidth(),
             placeholder = "Ej. Diabetes, hipertensión", singleLine = false, minLines = 2, maxLines = 4)
+        SectionLabel("Rutina")
         MealTimesCard(breakfast, lunch, dinner,
             onBreakfast = { breakfast = it }, onLunch = { lunch = it }, onDinner = { dinner = it })
     }
@@ -212,8 +219,10 @@ private fun CaregiverProfileForm(
 
     ProfileLayout(UserRole.CAREGIVER, onBack, onSubmit = ::submit, loading = loading, editing = editing) {
         if (editing) {
+            SectionLabel("Datos personales", Modifier.padding(top = 0.dp))
             NameFields(firstName, lastName, { firstName = it; firstNameError = null }, { lastName = it }, firstNameError)
         }
+        SectionLabel("Perfil profesional")
         ProfileTextField(
             experience, { experience = it; expError = null }, "Experiencia Profesional", Modifier.fillMaxWidth(),
             placeholder = "Escribe detalladamente tu trayectoria, experiencia en el cuidado de pacientes, adultos mayores o historial médico...",
@@ -239,8 +248,8 @@ private fun ProfileLayout(
         ProfileHeader(role, onBack, editing)
         // Formulario con scroll; el botón queda fijo abajo como en el mockup
         Column(
-            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 16.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
             content = content
         )
         PrimaryButton(if (editing) "GUARDAR CAMBIOS" else "GUARDAR Y COMENZAR", onClick = { focus.clearFocus(); onSubmit() }, loading = loading)
@@ -250,55 +259,51 @@ private fun ProfileLayout(
 
 @Composable
 private fun ProfileHeader(role: UserRole, onBack: () -> Unit, editing: Boolean) {
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            IconButton(onClick = onBack, Modifier.align(Alignment.CenterStart).size(48.dp)) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Volver", tint = MRColors.Navy)
-            }
-            Box(Modifier.align(Alignment.Center)) { BrandHeader(compact = true) }
+    Column(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            BackButton(onBack)
+            Spacer(Modifier.weight(1f))
+            BrandHeader(compact = true)
         }
-        Spacer(Modifier.height(8.dp))
-        Text(if (editing) "Mi Perfil" else "Completar Perfil", fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, color = MRColors.Navy)
-        Spacer(Modifier.height(10.dp))
-        FlowRowCenter {
-            if (!editing) InfoChip("Paso 2 de 2", MRColors.ChipGray)
-            if (role == UserRole.PATIENT) InfoChip("Rol: Paciente", MRColors.MintStrong)
-            else InfoChip("Rol: Cuidador", MRColors.Orange)
+        Spacer(Modifier.height(16.dp))
+        Text(
+            if (role == UserRole.PATIENT) "PACIENTE" else "CUIDADOR",
+            fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = MRColors.Slate
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            if (editing) "MI PERFIL" else "COMPLETAR PERFIL",
+            fontSize = 30.sp, lineHeight = 34.sp, fontWeight = FontWeight.ExtraBold, color = MRColors.Ink
+        )
+        if (!editing) {
+            Spacer(Modifier.height(10.dp))
+            StatusChip("Paso 2 de 2", MRColors.SkyBlue)
         }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun FlowRowCenter(content: @Composable () -> Unit) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) { content() }
-}
-
-@Composable
-private fun InfoChip(text: String, color: androidx.compose.ui.graphics.Color) {
-    Surface(shape = CircleShape, color = color) {
-        Text(text, fontSize = 18.sp, color = MRColors.Navy, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
 }
 
 /* ------------------------- CAMPOS ------------------------- */
 
 @Composable
-private fun fieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = MRColors.FieldBg,
-    unfocusedContainerColor = MRColors.FieldBg,
-    errorContainerColor = MRColors.FieldBg,
-    unfocusedBorderColor = MRColors.FieldBorder,
-    focusedBorderColor = MRColors.Navy,
-    focusedLabelColor = MRColors.Navy,
-    unfocusedLabelColor = MRColors.Navy
+internal fun fieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedContainerColor = MRColors.White,
+    unfocusedContainerColor = MRColors.White,
+    errorContainerColor = MRColors.White,
+    unfocusedBorderColor = MRColors.Slate,
+    focusedBorderColor = MRColors.Blue,
+    errorBorderColor = MRColors.Red,
+    focusedLabelColor = MRColors.Blue,
+    unfocusedLabelColor = MRColors.Slate,
+    errorLabelColor = MRColors.Red,
+    cursorColor = MRColors.Blue,
+    focusedTextColor = MRColors.Ink,
+    unfocusedTextColor = MRColors.Ink,
+    focusedPlaceholderColor = MRColors.Slate,
+    unfocusedPlaceholderColor = MRColors.Slate
 )
 
 @Composable
-private fun ProfileTextField(
+internal fun ProfileTextField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -338,7 +343,7 @@ private fun ProfileTextField(
 
 /** Lista desplegable sin depender de ExposedDropdownMenuBox (su API cambia entre versiones de Material 3). */
 @Composable
-private fun DropdownField(
+internal fun DropdownField(
     label: String,
     value: String,
     options: List<String>,
@@ -355,7 +360,7 @@ private fun DropdownField(
                 readOnly = true,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 64.dp),
                 label = { Text(label, fontSize = 16.sp) },
-                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MRColors.Navy) },
+                trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null, tint = MRColors.Blue) },
                 isError = error != null,
                 shape = RoundedCornerShape(8.dp),
                 textStyle = LocalTextStyle.current.copy(fontSize = 18.sp),
@@ -397,9 +402,9 @@ private fun MealTimesCard(
     var editing by rememberSaveable { mutableStateOf<Meal?>(null) }
 
     Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = MRColors.FieldBg,
-        border = BorderStroke(1.dp, MRColors.FieldBorder),
+        shape = RoundedCornerShape(20.dp),
+        color = MRColors.White,
+        border = BorderStroke(1.5.dp, MRColors.Slate),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
@@ -408,9 +413,9 @@ private fun MealTimesCard(
                     .clickable(role = Role.Button, onClickLabel = if (expanded) "Contraer" else "Expandir") { expanded = !expanded },
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Horarios de comida habituales", fontSize = 18.sp, color = MRColors.Navy, modifier = Modifier.weight(1f))
+                Text("Horarios de comida habituales", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink, modifier = Modifier.weight(1f))
                 Icon(if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
-                    contentDescription = null, tint = MRColors.Navy)
+                    contentDescription = null, tint = MRColors.Blue)
             }
             AnimatedVisibility(expanded) {
                 FlowRow(
@@ -446,40 +451,47 @@ private fun TimeChip(label: String, time: String?, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = if (time != null) MRColors.MintSoft else MRColors.Background,
-        border = BorderStroke(1.dp, if (time != null) MRColors.MintStrong else MRColors.FieldBorder),
+        color = if (time != null) MRColors.SkyBlue else MRColors.White,
+        border = BorderStroke(1.5.dp, if (time != null) MRColors.Blue else MRColors.Slate),
         modifier = Modifier.heightIn(min = 52.dp).semantics {
             contentDescription = if (time != null) "$label, ${display12h(time)}. Toca para cambiar" else "$label, sin hora. Toca para elegir"
         }
     ) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Outlined.Schedule, contentDescription = null, tint = MRColors.Navy, modifier = Modifier.size(22.dp))
+            Icon(Icons.Outlined.Schedule, contentDescription = null, tint = if (time != null) MRColors.Ink else MRColors.Blue, modifier = Modifier.size(22.dp))
             Spacer(Modifier.width(6.dp))
-            Text(if (time != null) "$label ${display12h(time)}" else label, fontSize = 18.sp, color = MRColors.Navy)
+            Text(if (time != null) "$label ${display12h(time)}" else label, fontSize = 18.sp, color = MRColors.Ink)
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TimeDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+internal fun TimeDialog(title: String, initial: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     val (h, m) = initial.split(":").let { it[0].toInt() to it[1].toInt() }
     val state = rememberTimePickerState(initialHour = h, initialMinute = m, is24Hour = false)
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, color = MRColors.Navy) },
+        containerColor = MRColors.White,
+        shape = RoundedCornerShape(28.dp),
+        title = { Text(title, color = MRColors.Ink, fontWeight = FontWeight.Bold) },
         text = { TimePicker(state = state) },
         confirmButton = {
-            TextButton(onClick = { onConfirm("%02d:%02d".format(state.hour, state.minute)) }) {
-                Text("Aceptar", fontSize = 18.sp)
-            }
+            TextButton(
+                onClick = { onConfirm("%02d:%02d".format(state.hour, state.minute)) },
+                colors = ButtonDefaults.textButtonColors(contentColor = MRColors.Blue)
+            ) { Text("Aceptar", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", fontSize = 18.sp) } }
+        dismissButton = {
+            TextButton(onClick = onDismiss, colors = ButtonDefaults.textButtonColors(contentColor = MRColors.Ink)) {
+                Text("Cancelar", fontSize = 18.sp)
+            }
+        }
     )
 }
 
 /** "14:30" -> "2:30 p. m." (en la BD se guarda en 24 h) */
-private fun display12h(hhmm: String): String {
+internal fun display12h(hhmm: String): String {
     val (h, m) = hhmm.split(":").let { it[0].toInt() to it[1].toInt() }
     val h12 = if (h % 12 == 0) 12 else h % 12
     return "%d:%02d %s".format(h12, m, if (h < 12) "a. m." else "p. m.")

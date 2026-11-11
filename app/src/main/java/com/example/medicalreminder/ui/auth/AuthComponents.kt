@@ -1,6 +1,7 @@
 package com.example.medicalreminder.ui.auth
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -18,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -28,31 +31,26 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.medicalreminder.ui.theme.MRColors
-import androidx.compose.foundation.Image
-import androidx.compose.ui.res.painterResource
 import com.example.medicalreminder.R
+import com.example.medicalreminder.ui.theme.MRColors
 
 enum class UserRole { PATIENT, CAREGIVER }
+
+/** Logo de la app: mascota (res/drawable/mascota2.png) + nombre. */
 @Composable
 fun BrandHeader(compact: Boolean = false) {
-    val box = if (compact) 44.dp else 64.dp
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)
-    ) {
+    val logoSize = if (compact) 52.dp else 76.dp
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 12.dp)) {
         Image(
-            painter = painterResource(id = R.drawable.mascota2),
-            contentDescription = "Logotipo de Medical Reminder",
-            modifier = Modifier
-                .size(box)
-                .clip(RoundedCornerShape(148.dp))
+            painter = painterResource(R.drawable.mascota2),
+            contentDescription = null, // decorativo: el nombre ya está escrito al lado
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.size(logoSize)
         )
         Text(
             "MEDICAL\nREMINDER",
             fontSize = if (compact) 18.sp else 22.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = MRColors.Navy,
+            fontWeight = FontWeight.ExtraBold, color = MRColors.Navy,
             lineHeight = if (compact) 19.sp else 24.sp
         )
     }
@@ -89,8 +87,12 @@ fun AuthTextField(
                 focusedContainerColor = MRColors.FieldBg,
                 unfocusedContainerColor = MRColors.FieldBg,
                 unfocusedBorderColor = MRColors.FieldBorder,
-                focusedBorderColor = MRColors.Navy,
-                errorContainerColor = MRColors.FieldBg
+                focusedBorderColor = MRColors.Blue,
+                errorContainerColor = MRColors.FieldBg,
+                errorBorderColor = MRColors.Red,
+                cursorColor = MRColors.Blue,
+                focusedTextColor = MRColors.Ink,
+                unfocusedTextColor = MRColors.Ink
             )
         )
         if (errorText != null) {
@@ -147,10 +149,12 @@ fun passwordStrength(p: String): Int {
 fun StrengthBar(password: String, modifier: Modifier = Modifier) {
     val score = passwordStrength(password)
     val label = when (score) { 0, 1 -> "Débil"; 2, 3 -> "Media"; else -> "Fuerte" }
+    // Débil = coral, media = azul, fuerte = verde (la palabra también se escribe, no solo el color)
+    val barColor = when (score) { 0, 1 -> MRColors.Coral; 2, 3 -> MRColors.Blue; else -> MRColors.Green }
     Column(modifier.semantics { contentDescription = "Seguridad de la contraseña: $label" }) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             repeat(5) { i ->
-                val c by animateColorAsState(if (i < score) MRColors.StrengthOn else MRColors.StrengthOff, label = "bar")
+                val c by animateColorAsState(if (i < score) barColor else MRColors.IceBlue, label = "bar")
                 Box(Modifier.weight(1f).height(6.dp).clip(CircleShape).background(c))
             }
         }
@@ -163,13 +167,12 @@ fun StrengthBar(password: String, modifier: Modifier = Modifier) {
 @Composable
 fun PrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, loading: Boolean = false) {
     Button(
-        onClick = onClick,
-        enabled = !loading,
+        onClick = { if (!loading) onClick() }, // mientras carga se ignora el toque, pero el botón sigue azul
         modifier = modifier.fillMaxWidth().height(60.dp),
         shape = CircleShape,
-        colors = ButtonDefaults.buttonColors(containerColor = MRColors.Mint, contentColor = MRColors.DarkTeal)
+        colors = ButtonDefaults.buttonColors(containerColor = MRColors.Blue, contentColor = MRColors.White)
     ) {
-        if (loading) CircularProgressIndicator(Modifier.size(24.dp), color = MRColors.DarkTeal, strokeWidth = 3.dp)
+        if (loading) CircularProgressIndicator(Modifier.size(24.dp), color = MRColors.White, strokeWidth = 3.dp)
         else Text(text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
     }
 }
@@ -190,7 +193,8 @@ fun RoleSelector(selected: UserRole, onSelect: (UserRole) -> Unit, modifier: Mod
 
 @Composable
 private fun RoleOption(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
-    val bg by animateColorAsState(if (selected) MRColors.MintStrong else MRColors.MintSoft, label = "role")
+    val bg by animateColorAsState(if (selected) MRColors.Blue else MRColors.IceBlue, label = "role")
+    val fg = if (selected) MRColors.White else MRColors.Ink
     Column(
         modifier
             .fillMaxHeight()
@@ -199,8 +203,8 @@ private fun RoleOption(label: String, icon: ImageVector, selected: Boolean, modi
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(icon, contentDescription = null, tint = MRColors.Navy, modifier = Modifier.size(28.dp))
+        Icon(icon, contentDescription = null, tint = fg, modifier = Modifier.size(28.dp))
         Spacer(Modifier.height(4.dp))
-        Text(label, fontSize = 18.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = MRColors.Navy)
+        Text(label, fontSize = 18.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, color = fg)
     }
 }
