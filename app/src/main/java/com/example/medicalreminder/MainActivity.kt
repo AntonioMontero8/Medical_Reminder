@@ -43,6 +43,7 @@ import com.example.medicalreminder.ui.medication.MedicationFormScreen
 import com.example.medicalreminder.ui.medication.MedicationListScreen
 import com.example.medicalreminder.ui.profile.EditProfileScreen
 import com.example.medicalreminder.ui.profile.ProfileSetupScreen
+import com.example.medicalreminder.ui.recetas.PantallaCargarReceta
 import com.example.medicalreminder.ui.theme.MRColors
 import com.example.medicalreminder.ui.theme.MedicalReminderTheme
 import kotlinx.coroutines.delay
@@ -62,6 +63,8 @@ object Routes {
     const val CAREGIVERS = "caregivers"
     const val LINK_QR = "link_qr"
     const val LINK_RESPOND = "link_respond/{id}"
+
+    const val RECETAS = "recetas"
     fun linkRespond(id: Int) = "link_respond/$id"
 
     // Cuidador
@@ -253,9 +256,8 @@ fun AppNavigation(
                         authVm.logout()
                         linkVm.reset()
                         profileVm.reset()
-                        medVm.reset()
-                        careVm.reset()
-                    }
+                    },
+                    onScanRecipe = { nav.navigate(Routes.RECETAS) }
                 )
             }
         }
