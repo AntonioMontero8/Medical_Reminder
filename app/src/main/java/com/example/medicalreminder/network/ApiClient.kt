@@ -1,19 +1,28 @@
 package com.example.medicalreminder.network
 
+import android.os.Build
 import com.example.medicalreminder.data.AuthResult
+import com.example.medicalreminder.data.ChatMessage
 import com.example.medicalreminder.data.CaregiverProfile
+import com.example.medicalreminder.data.Conversation
 import com.example.medicalreminder.data.LinkCode
 import com.example.medicalreminder.data.LinkInfo
 import com.example.medicalreminder.data.LinkPermissions
+import com.example.medicalreminder.data.Medication
+import com.example.medicalreminder.data.MedicationInput
 import com.example.medicalreminder.data.PanelData
 import com.example.medicalreminder.data.PatientCard
 import com.example.medicalreminder.data.PatientProfile
+import com.example.medicalreminder.data.SharedPatient
+import com.example.medicalreminder.data.TeamInfo
+import com.example.medicalreminder.data.TeamMember
 import com.example.medicalreminder.data.PendingRegistration
 import com.example.medicalreminder.data.ProfileData
 import com.example.medicalreminder.data.UserSession
 import com.example.medicalreminder.ui.auth.UserRole
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -21,9 +30,25 @@ import java.net.URL
 class ApiException(val code: Int, override val message: String) : Exception(message)
 
 object ApiClient {
-    // Emulador de Android Studio: 10.0.2.2 apunta al localhost de tu PC.
-    // Celular físico: usa la IP local de tu PC, por ejemplo "http://192.168.1.50:3000".
-    const val BASE_URL = "http://10.0.2.2:3000"
+    // Emulador: 10.0.2.2 apunta al localhost de tu PC.
+    // Celular físico: "localhost" si usas `adb reverse tcp:3000 tcp:3000`,
+    // o la IP de tu PC en el Wi-Fi (por ejemplo "192.168.1.50").
+    private const val PC_IP_FOR_PHONE = "localhost"
+
+    private val IS_EMULATOR: Boolean
+        get() = Build.HARDWARE.contains("ranchu") ||
+                Build.HARDWARE.contains("goldfish") ||
+                Build.PRODUCT.contains("sdk") ||
+                Build.PRODUCT.contains("emulator") ||
+                Build.MODEL.contains("sdk_gphone") ||
+                Build.MODEL.contains("Emulator") ||
+                Build.MODEL.contains("Android SDK") ||
+                Build.FINGERPRINT.contains("generic") ||
+                Build.FINGERPRINT.contains("emulator") ||
+                Build.FINGERPRINT.contains("emu64")
+
+    val BASE_URL: String
+        get() = if (IS_EMULATOR) "http://10.0.2.2:3000" else "http://$PC_IP_FOR_PHONE:3000"
 
     private fun tipoUsuario(role: UserRole) = if (role == UserRole.PATIENT) 1 else 2
 
@@ -94,6 +119,125 @@ object ApiClient {
         }
     }
 
+    // ---------------- Medicamentos (botiquín del paciente) ----------------
+
+    private fun medicationJson(x: MedicationInput) = JSONObject().apply {
+        put("nombre", x.nombre)
+        put("presentacion", x.presentacion)
+        put("concentracion", x.concentracion)
+        put("via", x.via)
+        put("unidadInventario", x.unidadInventario)
+        put("existencia", x.existencia)
+        put("fechaAdquisicion", x.fechaAdquisicion ?: JSONObject.NULL)
+        put("fechaCaducidad", x.fechaCaducidad ?: JSONObject.NULL)
+        put("dosisCantidad", x.dosisCantidad)
+        put("conAlimentos", x.conAlimentos)
+        put("indicaciones", x.indicaciones)
+        put("horarios", JSONArray(x.horarios))
+    }
+
+    private fun parseMedications(arr: JSONArray): List<Medication> = (0 until arr.length()).map { i ->
+        val m = arr.getJSONObject(i)
+        val hs = m.getJSONArray("horarios")
+        Medication(
+            idMedicamento = m.getInt("idMedicamento"),
+            nombre = m.getString("nombre"),
+            presentacion = m.optString("presentacion"),
+            concentracion = m.optString("concentracion"),
+            via = m.optString("via"),
+            unidad = m.optString("unidad"),
+            existencia = m.getDouble("existencia"),
+            dosisCantidad = if (m.isNull("dosisCantidad")) null else m.getDouble("dosisCantidad"),
+            conAlimentos = m.optString("conAlimentos", "indiferente"),
+            indicaciones = m.optString("indicaciones"),
+            horarios = (0 until hs.length()).map { hs.getString(it) },
+            dosisRestantes = if (m.isNull("dosisRestantes")) null else m.getInt("dosisRestantes"),
+            bajoInventario = m.optBoolean("bajoInventario", false),
+            fechaAdquisicion = m.strOrNull("fechaAdquisicion"),
+            fechaCaducidad = m.strOrNull("fechaCaducidad")
+        )
+    }
+
+    /** Registra un medicamento con su dosis y horarios (POST /api/medicamentos). */
+    suspend fun createMedication(token: String, x: MedicationInput) {
+        call("POST", "/api/medicamentos", medicationJson(x), token)
+    }
+
+    /** Edita un medicamento (PUT /api/medicamentos/:id). */
+    suspend fun updateMedication(token: String, id: Int, x: MedicationInput) {
+        call("PUT", "/api/medicamentos/$id", medicationJson(x), token)
+    }
+
+    /** Elimina un medicamento del botiquín; el servidor conserva su historial de tomas. */
+    suspend fun deleteMedication(token: String, id: Int) {
+        call("DELETE", "/api/medicamentos/$id", null, token)
+    }
+
+    /** Lista los medicamentos del paciente con sesión (GET /api/medicamentos). */
+    suspend fun listMedications(token: String): List<Medication> =
+        parseMedications(call("GET", "/api/medicamentos", null, token).getJSONArray("medicamentos"))
+
+    // ---------------- Cuidadores: botiquín del paciente, equipo, maestro y mensajes ----------------
+
+    /** Cuidador: botiquín de un paciente vinculado (403 si el paciente no compartió su inventario). */
+    suspend fun patientMedications(token: String, linkId: Int): List<Medication> =
+        parseMedications(call("GET", "/api/vinculos/$linkId/medicamentos", null, token).getJSONArray("medicamentos"))
+
+    /** Cuidador: los otros cuidadores activos del mismo paciente. */
+    suspend fun teamOf(token: String, linkId: Int): TeamInfo {
+        val j = call("GET", "/api/vinculos/$linkId/cuidadores", null, token)
+        val arr = j.getJSONArray("cuidadores")
+        return TeamInfo(
+            iAmMaster = j.optBoolean("yoMaestro", false),
+            others = (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                TeamMember(o.getInt("idUsuario"), o.optString("nombre"), o.optString("apellido"), o.optBoolean("maestro", false))
+            }
+        )
+    }
+
+    /** Paciente: elige a su cuidador maestro. */
+    suspend fun setMaster(token: String, linkId: Int) {
+        call("PUT", "/api/vinculos/$linkId/maestro", JSONObject(), token)
+    }
+
+    /** Cuidador: compañeros con los que comparte paciente, con último mensaje y no leídos. */
+    suspend fun conversations(token: String): List<Conversation> {
+        val arr = call("GET", "/api/mensajes/conversaciones", null, token).getJSONArray("conversaciones")
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            val ps = o.getJSONArray("pacientes")
+            Conversation(
+                idUsuario = o.getInt("idUsuario"),
+                nombre = o.optString("nombre"),
+                apellido = o.optString("apellido"),
+                esMaestro = o.optBoolean("esMaestro", false),
+                pacientes = (0 until ps.length()).map { k ->
+                    val p = ps.getJSONObject(k)
+                    SharedPatient(p.optString("nombre"), p.optString("apellido"), p.optBoolean("maestro", false))
+                },
+                ultimoTexto = o.strOrNull("ultimoTexto"),
+                ultimoMs = if (o.isNull("ultimoMs")) null else o.getLong("ultimoMs"),
+                ultimoMio = o.optBoolean("ultimoMio", false),
+                noLeidos = o.optInt("noLeidos", 0)
+            )
+        }
+    }
+
+    /** Mensajes con un compañero. Con `after` solo trae los más nuevos. También los marca como leídos. */
+    suspend fun messagesWith(token: String, otherId: Int, after: Long?): List<ChatMessage> {
+        val path = "/api/mensajes/$otherId" + if (after != null) "?despues=$after" else ""
+        val arr = call("GET", path, null, token).getJSONArray("mensajes")
+        return (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            ChatMessage(o.getLong("id"), o.getBoolean("mio"), o.getString("contenido"), o.getLong("enviadoEn"))
+        }
+    }
+
+    suspend fun sendMessage(token: String, otherId: Int, text: String) {
+        call("POST", "/api/mensajes/$otherId", JSONObject().put("contenido", text), token)
+    }
+
     suspend fun updatePatientProfile(token: String, nombre: String, apellido: String, x: PatientProfile): UserSession =
         parseUser(call("PUT", "/api/perfil", JSONObject().apply {
             put("nombre", nombre); put("apellido", apellido); put("perfil", patientJson(x))
@@ -148,7 +292,8 @@ object ApiClient {
                 estado = o.getString("estado"),
                 nombre = o.optString("nombre"),
                 apellido = o.optString("apellido"),
-                permisos = parsePerms(o.optJSONObject("permisos"))
+                permisos = parsePerms(o.optJSONObject("permisos")),
+                maestro = o.optBoolean("maestro", false)
             )
         }
     }

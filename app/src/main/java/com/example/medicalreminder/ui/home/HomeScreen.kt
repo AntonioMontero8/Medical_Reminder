@@ -34,6 +34,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.medicalreminder.data.UserSession
 import com.example.medicalreminder.ui.auth.UserRole
+import com.example.medicalreminder.ui.link.ConfirmDialog
+import com.example.medicalreminder.ui.link.WireCard
 import com.example.medicalreminder.ui.theme.MRColors
 import kotlinx.coroutines.launch
 import java.util.Calendar
@@ -76,7 +78,8 @@ fun HomeScreen(
     onEditProfile: () -> Unit,
     onScanRecipe: () -> Unit,
     onComingSoon: (String) -> Unit,
-    pendingRequests: Int = 0
+    pendingRequests: Int = 0,
+    unreadMessages: Int = 0
 ) {
     val isPatient = user.role == UserRole.PATIENT
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -95,7 +98,7 @@ fun HomeScreen(
         MenuEntry("Historia clínica", soon("Historia clínica")),
         MenuEntry("Tratamientos y recetas", soon("Tratamientos y recetas")),
         MenuEntry("Alarmas y recordatorios", soon("Alarmas y recordatorios")),
-        MenuEntry("Mi botiquín", soon("Mi botiquín")),
+        MenuEntry("Mi botiquín", onOpenMedications),
         MenuEntry("Diario médico", soon("Diario médico")),
         MenuEntry("Configuración", soon("Configuración"))
     ) else listOf(
@@ -104,22 +107,25 @@ fun HomeScreen(
         MenuEntry("Historias clínicas", soon("Historias clínicas"), indented = true),
         MenuEntry("Tratamientos y recetas", soon("Tratamientos y recetas"), indented = true),
         MenuEntry("Alarmas y recordatorios", soon("Alarmas y recordatorios"), indented = true),
-        MenuEntry("Inventarios de medicamentos", soon("Inventarios de medicamentos"), indented = true),
+        // Se elige primero al paciente; su botiquín está en la tarjeta «Inventario» de su tablero
+        MenuEntry("Inventarios de medicamentos", onOpenPatients, indented = true),
         MenuEntry("Historial de tomas / Adherencia", soon("Historial de tomas"), indented = true),
+        MenuEntry(if (unreadMessages > 0) "Mensajes ($unreadMessages)" else "Mensajes", onOpenMessages),
         MenuEntry("Configuración", soon("Configuración"))
     )
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = MRColors.Background) {
+            ModalDrawerSheet(drawerContainerColor = MRColors.White) {
                 Column(Modifier.fillMaxHeight().systemBarsPadding().verticalScroll(rememberScrollState())) {
                     DrawerHeader(user, isPatient)
                     Spacer(Modifier.height(8.dp))
                     entries.forEach { e ->
                         DrawerRow(e.label, e.indented) { go(e.onClick ?: {}) }
                     }
-                    DrawerRow("Cerrar sesión", false) { scope.launch { drawerState.close() }; confirmLogout = true }
+                    HorizontalDivider(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), color = MRColors.SkyBlue)
+                    DrawerRow("Cerrar sesión", false, danger = true) { scope.launch { drawerState.close() }; confirmLogout = true }
                     Spacer(Modifier.height(16.dp))
                 }
             }
@@ -139,7 +145,15 @@ fun HomeScreen(
                     )
                 }
                 IconButton(onClick = { scope.launch { drawerState.open() } }, modifier = Modifier.size(56.dp)) {
-                    Icon(Icons.Filled.Menu, contentDescription = "Abrir menú", tint = MRColors.Navy, modifier = Modifier.size(36.dp))
+                    BadgedBox(badge = {
+                        if (unreadMessages > 0) Badge { Text(if (unreadMessages > 9) "9+" else "$unreadMessages") }
+                    }) {
+                        Icon(
+                            Icons.Filled.Menu,
+                            contentDescription = if (unreadMessages > 0) "Abrir menú, tienes mensajes nuevos" else "Abrir menú",
+                            tint = MRColors.Navy, modifier = Modifier.size(36.dp)
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(20.dp))
@@ -157,7 +171,8 @@ fun HomeScreen(
                                 "Toca para aceptarla o rechazarla.",
                                 onOpenCaregivers
                             ),
-                            MRColors.Orange
+                            MRColors.Blue,
+                            container = MRColors.SkyBlue
                         )
                     }
                     ActionCard(
@@ -168,7 +183,7 @@ fun HomeScreen(
                     ActionCard(
                         Icons.Outlined.Medication, "Registrar un medicamento",
                         "Configura un fármaco manual con su dosis, horario e inventario de pastillas.",
-                        soon("Registrar un medicamento")
+                        onRegisterMedication
                     )
                     ActionCard(
                         Icons.Outlined.Checklist, "Crear un tratamiento completo",
@@ -187,18 +202,12 @@ fun HomeScreen(
     }
 
     if (confirmLogout) {
-        AlertDialog(
-            onDismissRequest = { confirmLogout = false },
-            title = { Text("¿Cerrar sesión?", color = MRColors.Navy) },
-            text = { Text("Tendrás que iniciar sesión de nuevo para ver tu información.", fontSize = 18.sp) },
-            confirmButton = {
-                TextButton(onClick = { confirmLogout = false; onLogout() }) {
-                    Text("Cerrar sesión", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmLogout = false }) { Text("Cancelar", fontSize = 18.sp) }
-            }
+        ConfirmDialog(
+            title = "¿Cerrar sesión?",
+            text = "Tendrás que iniciar sesión de nuevo para ver tu información.",
+            confirmText = "Cerrar sesión",
+            onConfirm = { confirmLogout = false; onLogout() },
+            onDismiss = { confirmLogout = false }
         )
     }
 }
@@ -208,7 +217,7 @@ fun HomeScreen(
 @Composable
 private fun DrawerHeader(user: UserSession, isPatient: Boolean) {
     Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Outlined.AccountCircle, contentDescription = null, tint = MRColors.Navy, modifier = Modifier.size(64.dp))
+        Icon(Icons.Outlined.AccountCircle, contentDescription = null, tint = MRColors.Blue, modifier = Modifier.size(64.dp))
         Spacer(Modifier.width(14.dp))
         Column {
             Text(
@@ -222,12 +231,12 @@ private fun DrawerHeader(user: UserSession, isPatient: Boolean) {
 }
 
 @Composable
-private fun DrawerRow(label: String, indented: Boolean, onClick: () -> Unit) {
+private fun DrawerRow(label: String, indented: Boolean, danger: Boolean = false, onClick: () -> Unit) {
     Text(
         label,
         fontSize = if (indented) 17.sp else 20.sp,
         fontWeight = if (indented) FontWeight.Normal else FontWeight.Medium,
-        color = MRColors.Navy,
+        color = if (danger) MRColors.Red else MRColors.Ink,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = if (indented) 48.dp else 56.dp)
@@ -242,73 +251,67 @@ private fun DrawerRow(label: String, indented: Boolean, onClick: () -> Unit) {
 /** Tarjeta de la pantalla principal del paciente: contorno marcado, icono a la izquierda, título y descripción. */
 @Composable
 private fun ActionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(28.dp),
-        color = MRColors.Background,
-        border = BorderStroke(2.5.dp, MRColors.Navy),
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    WireCard(onClick = onClick) {
         Row(Modifier.padding(horizontal = 18.dp, vertical = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(icon, contentDescription = null, tint = MRColors.Navy, modifier = Modifier.size(48.dp))
+            Icon(icon, contentDescription = null, tint = MRColors.Blue, modifier = Modifier.size(48.dp))
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy)
-                Text(subtitle, fontSize = 16.sp, color = MRColors.Navy, modifier = Modifier.padding(top = 4.dp))
+                Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink)
+                Text(subtitle, fontSize = 16.sp, color = MRColors.Ink, modifier = Modifier.padding(top = 4.dp))
             }
         }
     }
 }
 
-/** Tarjeta de uso general; el tablero del cuidador la usa con candado o con "Próximamente". */
+/**
+ * Tarjeta de uso general; el tablero del cuidador la usa con candado o con "Próximamente".
+ * [accent] es el color del icono y [container] el del fondo.
+ */
 @Composable
-fun HomeCard(item: HomeItem, accent: Color) {
+fun HomeCard(item: HomeItem, accent: Color = MRColors.Blue, container: Color = MRColors.White) {
     val click = item.onClick?.takeIf { !item.locked }
     val body: @Composable () -> Unit = {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(56.dp).clip(CircleShape).background(if (item.locked) MRColors.StrengthOff else accent),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    if (item.locked) Icons.Outlined.Lock else item.icon,
-                    contentDescription = null, tint = MRColors.Navy, modifier = Modifier.size(30.dp)
-                )
-            }
+        Row(Modifier.padding(horizontal = 18.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                if (item.locked) Icons.Outlined.Lock else item.icon,
+                contentDescription = null,
+                tint = if (item.locked) MRColors.Slate else accent,
+                modifier = Modifier.size(40.dp)
+            )
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
-                Text(item.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy)
-                Text(item.subtitle, fontSize = 16.sp, color = MRColors.TextGray, modifier = Modifier.padding(top = 2.dp))
+                Text(item.title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink)
+                Text(
+                    item.subtitle, fontSize = 16.sp,
+                    color = if (item.locked) MRColors.Slate else MRColors.Ink,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
                 when {
                     item.locked -> Text(
                         "Sin permiso del paciente", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        color = MRColors.Navy, modifier = Modifier.padding(top = 6.dp)
+                        color = MRColors.Ink, modifier = Modifier.padding(top = 6.dp)
                     )
                     click == null -> Text(
                         "Próximamente", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                        color = MRColors.Navy, modifier = Modifier.padding(top = 6.dp)
+                        color = MRColors.Slate, modifier = Modifier.padding(top = 6.dp)
                     )
                 }
             }
             if (click != null) {
-                Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MRColors.Navy)
+                Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MRColors.Ink)
             }
         }
     }
-    if (click != null) {
-        Surface(
-            onClick = click,
-            shape = RoundedCornerShape(20.dp),
-            color = MRColors.FieldBg,
-            border = BorderStroke(1.dp, MRColors.FieldBorder),
-            modifier = Modifier.fillMaxWidth()
+    when {
+        click != null -> WireCard(onClick = click, color = container) { body() }
+        // Bloqueada: fondo celeste y contorno pizarra (no se puede abrir)
+        item.locked -> WireCard(
+            color = MRColors.IceBlue, borderColor = MRColors.Slate, thin = true,
+            modifier = Modifier.semantics(mergeDescendants = true) {}
         ) { body() }
-    } else {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MRColors.FieldBg,
-            border = BorderStroke(1.dp, MRColors.FieldBorder),
-            modifier = Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}
+        else -> WireCard(
+            color = container, borderColor = MRColors.Slate, thin = true,
+            modifier = Modifier.semantics(mergeDescendants = true) {}
         ) { body() }
     }
 }

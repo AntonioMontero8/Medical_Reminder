@@ -2,13 +2,23 @@ package com.example.medicalreminder.ui.link
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.ErrorOutline
+import androidx.compose.material.icons.outlined.PersonAdd
+import androidx.compose.material.icons.outlined.QrCode2
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Star
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -51,8 +61,11 @@ fun PatientLinksScreen(
 
     val active = vm.links.count { !it.pendiente }
 
+    val pending = vm.links.count { it.pendiente }
+
     LinkScaffold(
         title = "Mis cuidadores",
+        caption = "Red de apoyo",
         onBack = onBack,
         bottom = {
             if (active < MAX_CAREGIVERS) {
@@ -62,25 +75,57 @@ fun PatientLinksScreen(
             }
         }
     ) {
+        SlotsCard(active, pending)
         BodyText("Tú decides qué puede ver cada cuidador y puedes cambiarlo cuando quieras.")
-        Text(
-            "$active de $MAX_CAREGIVERS cuidadores vinculados",
-            fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy
-        )
         when {
-            !vm.linksLoaded -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            !vm.linksLoaded -> CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally), color = MRColors.Blue)
             vm.links.isEmpty() -> InfoCard(
                 "Aún no tienes cuidadores",
-                "Toca «Vincular cuidador» y muestra el código QR a la persona que te acompañará."
+                "Toca «Vincular cuidador» y muestra el código QR a la persona que te acompañará.",
+                icon = Icons.Outlined.PersonAdd
             )
             else -> vm.links.forEach { l ->
                 LinkListItem(
                     name = l.fullName,
                     subtitle = if (l.pendiente) "Quiere ser tu cuidador. Toca para responder." else "Toca para cambiar sus permisos",
-                    chipText = if (l.pendiente) "Pendiente" else "Activo",
-                    chipColor = if (l.pendiente) MRColors.Orange else MRColors.MintStrong,
+                    chipText = if (l.pendiente) "Pendiente" else if (l.maestro) "Maestro" else "Activo",
+                    // Pendiente = celeste (informativo), maestro = azul, activo = verde (vínculo en buen estado)
+                    chipColor = if (l.pendiente) MRColors.SkyBlue else if (l.maestro) MRColors.Blue else MRColors.Green,
+                    chipIcon = if (l.pendiente) Icons.Outlined.Schedule else if (l.maestro) Icons.Outlined.Star else Icons.Outlined.CheckCircle,
                     onClick = { onOpenLink(l.idVinculacion) }
                 )
+            }
+        }
+    }
+}
+
+/** «2 de 3 cuidadores»: un círculo por cada lugar (verde = vinculado, celeste = solicitud pendiente, vacío = libre). */
+@Composable
+private fun SlotsCard(active: Int, pending: Int) {
+    WireCard(thin = true) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "$active de $MAX_CAREGIVERS cuidadores",
+                    fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink
+                )
+                Text(
+                    if (pending > 0) "$pending solicitud" + (if (pending == 1) "" else "es") + " por responder" else "vinculados",
+                    fontSize = 16.sp, color = MRColors.Slate
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                repeat(MAX_CAREGIVERS) { i ->
+                    val fill = when {
+                        i < active -> MRColors.Green
+                        i < active + pending -> MRColors.SkyBlue
+                        else -> MRColors.White
+                    }
+                    Box(
+                        Modifier.size(22.dp).clip(CircleShape).background(fill)
+                            .border(2.dp, if (fill == MRColors.White) MRColors.Slate else fill, CircleShape)
+                    )
+                }
             }
         }
     }
@@ -116,22 +161,19 @@ fun PatientQrScreen(vm: LinkViewModel, onBack: () -> Unit, onOpenLink: (Int) -> 
 
     LinkScaffold(
         title = "Vincular cuidador",
+        caption = "Red de apoyo",
         onBack = onBack,
         bottom = {
             PrimaryButton("GENERAR NUEVO CÓDIGO", onClick = { vm.generateCode() }, loading = vm.busy)
         }
     ) {
-        BodyText(
+        InfoCard(
+            "Cómo vincularlo",
             "Pídele a tu cuidador que abra la app, elija «Vincular paciente» y escanee este código. " +
                     "Después podrás aceptar su solicitud y elegir qué puede ver.",
-            center = true
+            icon = Icons.Outlined.QrCode2
         )
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = Color.White,
-            border = BorderStroke(1.dp, MRColors.FieldBorder),
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        ) {
+        WireCard(modifier = Modifier.align(Alignment.CenterHorizontally).widthIn(max = 300.dp)) {
             Box(
                 Modifier
                     .padding(20.dp)
@@ -147,12 +189,12 @@ fun PatientQrScreen(vm: LinkViewModel, onBack: () -> Unit, onOpenLink: (Int) -> 
                     code != null && !expired -> QrCodeImage(code.qrText, Modifier.fillMaxSize())
                     code != null -> Text(
                         "El código venció. Genera uno nuevo.",
-                        fontSize = 18.sp, color = MRColors.Navy, textAlign = TextAlign.Center
+                        fontSize = 18.sp, color = MRColors.Ink, textAlign = TextAlign.Center
                     )
-                    vm.busy -> CircularProgressIndicator(color = MRColors.Navy)
+                    vm.busy -> CircularProgressIndicator(color = MRColors.Blue)
                     else -> Text(
                         "No se pudo generar el código.",
-                        fontSize = 18.sp, color = MRColors.Navy, textAlign = TextAlign.Center
+                        fontSize = 18.sp, color = MRColors.Ink, textAlign = TextAlign.Center
                     )
                 }
             }
@@ -162,12 +204,20 @@ fun PatientQrScreen(vm: LinkViewModel, onBack: () -> Unit, onOpenLink: (Int) -> 
             Text(
                 code.display,
                 fontSize = 34.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 4.sp,
-                color = MRColors.Navy, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                color = MRColors.Blue, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
             )
-            BodyText(
-                "Vigente por %d:%02d".format(remaining / 60, remaining % 60),
-                center = true, modifier = Modifier.fillMaxWidth()
-            )
+            // Verde mientras sobra tiempo; coral el último minuto
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                if (remaining > 60) {
+                    StatusChip("Vigente por %d:%02d".format(remaining / 60, remaining % 60), MRColors.Green, Icons.Outlined.CheckCircle)
+                } else {
+                    StatusChip("Vence en %d s".format(remaining), MRColors.Blush, Icons.Outlined.Warning, MRColors.Coral)
+                }
+            }
+        } else if (code != null) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                StatusChip("Código vencido", MRColors.Red, Icons.Outlined.ErrorOutline)
+            }
         }
         BodyText("Comparte este código solo con la persona de confianza que te cuidará.", center = true)
     }
@@ -199,10 +249,12 @@ private fun LinkResponseContent(vm: LinkViewModel, link: LinkInfo, onBack: () ->
     var perms by remember(link.idVinculacion) { mutableStateOf(link.permisos) }
     var confirmReject by remember { mutableStateOf(false) }
     var confirmUnlink by remember { mutableStateOf(false) }
+    var confirmMaster by remember { mutableStateOf(false) }
 
     if (link.pendiente) {
         LinkScaffold(
             title = "Solicitud de vinculación",
+            caption = "Red de apoyo",
             onBack = onBack,
             bottom = {
                 PrimaryButton(
@@ -213,17 +265,18 @@ private fun LinkResponseContent(vm: LinkViewModel, link: LinkInfo, onBack: () ->
                 SecondaryButton("RECHAZAR", onClick = { confirmReject = true }, danger = true)
             }
         ) {
-            InfoCard(
-                "${link.fullName} quiere ser tu cuidador",
-                "Si aceptas, verá tu tablero, solo para leer, con lo que permitas abajo."
-            )
-            Text("¿Qué podrá ver o hacer?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Navy)
+            PersonBanner(link.fullName, "Quiere ser tu cuidador", "Si aceptas, verá tu tablero, solo para leer, con lo que permitas abajo.")
+            SectionLabel("¿Qué podrá ver o hacer?")
             PermissionList(perms) { perms = it }
             BodyText("Puedes cambiar estos permisos o desvincularlo cuando quieras desde «Mis cuidadores».")
+            if (vm.links.none { !it.pendiente && it.maestro }) {
+                BodyText("El primer cuidador que aceptes será tu cuidador maestro; después podrás elegir a otro.")
+            }
         }
     } else {
         LinkScaffold(
             title = "Permisos de ${link.nombre}",
+            caption = "Mis cuidadores",
             onBack = onBack,
             bottom = {
                 PrimaryButton(
@@ -234,10 +287,17 @@ private fun LinkResponseContent(vm: LinkViewModel, link: LinkInfo, onBack: () ->
                 SecondaryButton("DESVINCULAR", onClick = { confirmUnlink = true }, danger = true)
             }
         ) {
-            InfoCard(
-                "${link.fullName} es tu cuidador",
-                "Los cambios se aplican en su tablero en unos segundos."
+            PersonBanner(
+                link.fullName, if (link.maestro) "Cuidador maestro" else "Cuidador activo",
+                "Los cambios se aplican en su tablero en unos segundos.",
+                chipColor = if (link.maestro) MRColors.Blue else MRColors.Green
             )
+            if (link.maestro) {
+                BodyText("Es el cuidador principal de tu equipo. Puedes elegir a otro cuando quieras.")
+            } else {
+                SecondaryButton("HACER CUIDADOR MAESTRO", onClick = { confirmMaster = true })
+            }
+            SectionLabel("Permisos")
             PermissionList(perms) { perms = it }
         }
     }
@@ -247,8 +307,18 @@ private fun LinkResponseContent(vm: LinkViewModel, link: LinkInfo, onBack: () ->
             title = "¿Rechazar la solicitud?",
             text = "${link.fullName} no podrá ver tu información.",
             confirmText = "Rechazar",
+            danger = true,
             onConfirm = { confirmReject = false; vm.respond(link.idVinculacion, false, null, onDone) },
             onDismiss = { confirmReject = false }
+        )
+    }
+    if (confirmMaster) {
+        ConfirmDialog(
+            title = "¿Hacer maestro a ${link.nombre}?",
+            text = "Será el cuidador principal de tu equipo. Solo puede haber uno: el maestro actual dejará de serlo.",
+            confirmText = "Hacer maestro",
+            onConfirm = { confirmMaster = false; vm.setMaster(link.idVinculacion) {} },
+            onDismiss = { confirmMaster = false }
         )
     }
     if (confirmUnlink) {
@@ -256,8 +326,25 @@ private fun LinkResponseContent(vm: LinkViewModel, link: LinkInfo, onBack: () ->
             title = "¿Desvincular a ${link.nombre}?",
             text = "Dejará de ver tu tablero. Si quieres volver a vincularlo, tendrá que escanear un código nuevo.",
             confirmText = "Desvincular",
+            danger = true,
             onConfirm = { confirmUnlink = false; vm.unlink(link.idVinculacion, onDone) },
             onDismiss = { confirmUnlink = false }
         )
+    }
+}
+
+/** Tarjeta con el avatar de la persona, su estado y una explicación corta. */
+@Composable
+private fun PersonBanner(name: String, status: String, text: String, chipColor: Color = MRColors.SkyBlue) {
+    WireCard {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Avatar(name, size = 56.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(name, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MRColors.Ink)
+                StatusChip(status, chipColor)
+                Text(text, fontSize = 16.sp, color = MRColors.Slate)
+            }
+        }
     }
 }

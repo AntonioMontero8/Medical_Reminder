@@ -17,7 +17,8 @@ data class LinkInfo(
     val estado: String, // "pendiente" | "activa"
     val nombre: String,
     val apellido: String,
-    val permisos: LinkPermissions
+    val permisos: LinkPermissions,
+    val maestro: Boolean = false // cuidador maestro del paciente (solo aplica a vínculos activos)
 ) {
     val pendiente: Boolean get() = estado == "pendiente"
     val fullName: String get() = "$nombre $apellido".trim()
